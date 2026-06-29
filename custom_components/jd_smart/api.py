@@ -434,7 +434,7 @@ def _tlv_app_info(profile: JdSmartDeviceProfile) -> bytes:
     builder = _PacketBuilder()
     builder.short(3)
     builder.short(WJLOGIN_APP_ID)
-    builder.short_string("android")
+    builder.short_string(profile.platform)
     builder.short_string(profile.platform_version)
     builder.short_string(profile.app_version)
     builder.short_string("")

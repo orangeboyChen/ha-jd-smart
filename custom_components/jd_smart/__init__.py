@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from homeassistant.components import persistent_notification
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -9,7 +10,10 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import JdSmartClient, JdSmartCredentials, JdSmartDeviceProfile
 from .const import (
+    AIR_CONDITIONER_REQUIRED_STREAMS,
     CONF_APP_VERSION,
+    CONF_CATEGORY_ID,
+    CONF_CATEGORY_NAME,
     CONF_CHANNEL,
     CONF_COOKIE,
     CONF_DEVICE_ID,
@@ -17,6 +21,7 @@ from .const import (
     CONF_DEVICE_NAME,
     CONF_DEVICE_TYPE,
     CONF_DEVICES,
+    CONF_CONFIG_TYPE,
     CONF_FEED_ID,
     CONF_PIN,
     CONF_PLATFORM,
@@ -32,6 +37,8 @@ from .const import (
     DEFAULT_PLATFORM_VERSION,
     DEFAULT_USER_AGENT,
     DEVICE_TYPE_AIR_CONDITIONER,
+    DOMAIN,
+    PULL_REQUEST_URL,
 )
 from .coordinator import (
     JdSmartAuthRetryManager,
@@ -90,6 +97,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> b
             except ConfigEntryNotReady:
                 if not coordinator.auth_retry_pending:
                     raise
+            else:
+                if _is_unsupported_stream_layout(device, coordinator):
+                    _notify_unsupported_stream_layout(hass, device, coordinator)
     except Exception:
         auth_retry_manager.async_shutdown()
         raise
@@ -130,3 +140,37 @@ def _entry_devices(data: dict) -> list[dict[str, str]]:
             CONF_DEVICE_TYPE: DEVICE_TYPE_AIR_CONDITIONER,
         }
     ]
+
+
+def _is_unsupported_stream_layout(
+    device: dict[str, str], coordinator: JdSmartCoordinator
+) -> bool:
+    """Return whether a recognized device has no usable entity handler."""
+    return (
+        device.get(CONF_DEVICE_TYPE, DEVICE_TYPE_AIR_CONDITIONER)
+        == DEVICE_TYPE_AIR_CONDITIONER
+        and coordinator.data is not None
+        and not AIR_CONDITIONER_REQUIRED_STREAMS <= coordinator.data.streams.keys()
+    )
+
+
+def _notify_unsupported_stream_layout(
+    hass: HomeAssistant,
+    device: dict[str, str],
+    coordinator: JdSmartCoordinator,
+) -> None:
+    """Tell the user how to request support for an unknown stream layout."""
+    streams = ", ".join(sorted(coordinator.data.streams)) if coordinator.data else "none"
+    persistent_notification.async_create(
+        hass,
+        "JD Smart added a device with an unsupported stream layout:\n"
+        f"- {device.get(CONF_DEVICE_NAME, coordinator.feed_id)}: "
+        f"{device.get(CONF_CATEGORY_NAME, 'Unknown category')} "
+        f"(category_id={device.get(CONF_CATEGORY_ID, 'unknown')}, "
+        f"config_type={device.get(CONF_CONFIG_TYPE, 'unknown')})\n"
+        f"- Available streams: {streams}\n\n"
+        "Please include this information in a "
+        f"[pull request]({PULL_REQUEST_URL}).",
+        title="JD Smart stream layout unsupported",
+        notification_id=f"{DOMAIN}_{coordinator.feed_id}_unsupported_stream_layout",
+    )

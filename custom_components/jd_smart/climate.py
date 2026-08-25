@@ -15,7 +15,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import JdSmartConfigEntry
-from .const import DEVICE_TYPE_AIR_CONDITIONER
+from .const import AIR_CONDITIONER_REQUIRED_STREAMS, DEVICE_TYPE_AIR_CONDITIONER
 from .entity import JdSmartEntity, coordinator_has_streams
 
 MODE_TO_HVAC = {
@@ -56,7 +56,12 @@ PRESET_TO_VALUE = {
     "child": "4",
 }
 VALUE_TO_PRESET = {value: key for key, value in PRESET_TO_VALUE.items()}
-CLIMATE_REQUIRED_STREAMS = frozenset({"power", "mode", "settemp"})
+CLIMATE_SUPPORTED_FEATURES = (
+    ClimateEntityFeature.TARGET_TEMPERATURE
+    | ClimateEntityFeature.FAN_MODE
+    | ClimateEntityFeature.PRESET_MODE
+    | ClimateEntityFeature.SWING_MODE
+)
 
 
 async def async_setup_entry(
@@ -69,7 +74,7 @@ async def async_setup_entry(
         JdSmartClimate(coordinator)
         for coordinator in entry.runtime_data.coordinators.values()
         if coordinator.device_type == DEVICE_TYPE_AIR_CONDITIONER
-        if coordinator_has_streams(coordinator, CLIMATE_REQUIRED_STREAMS)
+        if coordinator_has_streams(coordinator, AIR_CONDITIONER_REQUIRED_STREAMS)
     )
 
 
@@ -77,12 +82,7 @@ class JdSmartClimate(JdSmartEntity, ClimateEntity):
     """JD Smart climate entity."""
 
     _attr_name = None
-    _attr_supported_features = (
-        ClimateEntityFeature.TARGET_TEMPERATURE
-        | ClimateEntityFeature.FAN_MODE
-        | ClimateEntityFeature.PRESET_MODE
-        | ClimateEntityFeature.SWING_MODE
-    )
+    _attr_supported_features = CLIMATE_SUPPORTED_FEATURES
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = 18
     _attr_max_temp = 32
@@ -103,6 +103,15 @@ class JdSmartClimate(JdSmartEntity, ClimateEntity):
     def __init__(self, coordinator) -> None:
         """Initialize climate."""
         super().__init__(coordinator, "climate")
+        streams = coordinator.data.streams if coordinator.data else None
+        self._attr_supported_features = _supported_features(streams)
+        if streams is not None:
+            if "mark" not in streams:
+                self._attr_fan_modes = None
+            if "sleepmode" not in streams:
+                self._attr_preset_modes = None
+            if "verdir" not in streams:
+                self._attr_swing_modes = None
 
     @property
     def current_temperature(self) -> float | None:
@@ -174,6 +183,21 @@ class JdSmartClimate(JdSmartEntity, ClimateEntity):
             await self.coordinator.async_control_streams(commands)
         except Exception as err:
             raise HomeAssistantError("Unable to control JD Smart") from err
+
+
+def _supported_features(streams: dict[str, str] | None) -> ClimateEntityFeature:
+    """Return the climate features supported by available streams."""
+    if streams is None:
+        return CLIMATE_SUPPORTED_FEATURES
+
+    features = ClimateEntityFeature.TARGET_TEMPERATURE
+    if "mark" in streams:
+        features |= ClimateEntityFeature.FAN_MODE
+    if "sleepmode" in streams:
+        features |= ClimateEntityFeature.PRESET_MODE
+    if "verdir" in streams:
+        features |= ClimateEntityFeature.SWING_MODE
+    return features
 
 
 def _float_or_none(value: str | None) -> float | None:

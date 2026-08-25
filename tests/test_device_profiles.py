@@ -5,7 +5,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from homeassistant.components.climate import ClimateEntityFeature
+
 from custom_components.jd_smart.api import JdSmartDevice, JdSmartSnapshot, _parse_devices
+from custom_components.jd_smart.climate import _supported_features
 from custom_components.jd_smart.config_flow import (
     CONF_SELECTED_DEVICES,
     JdSmartAcConfigFlow,
@@ -143,3 +146,10 @@ def test_stream_capabilities_filter_optional_entities() -> None:
     assert not coordinator_has_streams(
         coordinator, frozenset({"power", "mode", "settemp"})
     )
+
+
+def test_climate_features_follow_available_optional_streams() -> None:
+    """Do not expose controls for unavailable climate streams."""
+    features = _supported_features({"power": "1", "mode": "0", "settemp": "25"})
+
+    assert features == ClimateEntityFeature.TARGET_TEMPERATURE

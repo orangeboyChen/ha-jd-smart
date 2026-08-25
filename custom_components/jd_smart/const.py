@@ -60,6 +60,7 @@ DEVICE_TYPE_AIR_CONDITIONER = "air_conditioner"
 DEVICE_TYPE_BY_CATEGORY = {
     "101001": DEVICE_TYPE_AIR_CONDITIONER,
 }
+AIR_CONDITIONER_REQUIRED_STREAMS = frozenset({"power", "mode", "settemp"})
 PULL_REQUEST_URL = "https://github.com/orangeboyChen/ha-jd-smart/pulls"
 
 

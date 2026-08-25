@@ -52,6 +52,12 @@ ATTR_MANUFACTURER = "JD Smart"
 UPDATE_AUTH_FAILURE_THRESHOLD = 3
 
 
-def auth_refresh_notification_id(entry_id: str) -> str:
-    """Return the persistent notification ID for auth refresh retries."""
-    return f"{DOMAIN}_{entry_id}_auth_refresh_failed"
+def auth_refresh_notification_ids(
+    entry_id: str, feed_ids: tuple[str, ...] = ()
+) -> tuple[str, ...]:
+    """Return current and legacy notification IDs for an entry."""
+    return (
+        f"{DOMAIN}_{entry_id}_auth_refresh_failed",
+        f"{DOMAIN}_token_refresh_failed",
+        *(f"{DOMAIN}_{feed_id}_token_refresh_failed" for feed_id in feed_ids),
+    )

@@ -33,7 +33,7 @@ from .const import (
     FAST_POLL_INTERVAL,
     LOGGER,
     UPDATE_AUTH_FAILURE_THRESHOLD,
-    auth_refresh_notification_id,
+    auth_refresh_notification_ids,
 )
 
 type JdSmartConfigEntry = ConfigEntry[JdSmartRuntimeData]
@@ -155,10 +155,16 @@ class JdSmartAuthRetryManager:
         if self._retry_cancel:
             self._retry_cancel()
             self._retry_cancel = None
-        persistent_notification.async_dismiss(
-            self.hass,
-            auth_refresh_notification_id(self.config_entry.entry_id),
-        )
+        self._async_dismiss_notifications()
+
+    @callback
+    def _async_dismiss_notifications(self) -> None:
+        """Dismiss current and legacy authentication notifications."""
+        feed_ids = tuple(coordinator.feed_id for coordinator in self._coordinators)
+        for notification_id in auth_refresh_notification_ids(
+            self.config_entry.entry_id, feed_ids
+        ):
+            persistent_notification.async_dismiss(self.hass, notification_id)
 
     @callback
     def _async_update_notification(
@@ -169,6 +175,12 @@ class JdSmartAuthRetryManager:
         """Create or update the single authentication retry notification."""
         reason = str(err) or err.__class__.__name__
         local_retry_at = dt_util.as_local(retry_at).strftime("%Y-%m-%d %H:%M:%S %Z")
+        feed_ids = tuple(coordinator.feed_id for coordinator in self._coordinators)
+        notification_ids = auth_refresh_notification_ids(
+            self.config_entry.entry_id, feed_ids
+        )
+        for legacy_id in notification_ids[1:]:
+            persistent_notification.async_dismiss(self.hass, legacy_id)
         persistent_notification.async_create(
             self.hass,
             (
@@ -180,7 +192,7 @@ class JdSmartAuthRetryManager:
                 "Refresh authentication or enter new authentication data."
             ),
             title="JD Smart authentication refresh retrying",
-            notification_id=auth_refresh_notification_id(self.config_entry.entry_id),
+            notification_id=notification_ids[0],
         )
 
     @callback

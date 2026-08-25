@@ -9,9 +9,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.jd_smart.config_flow import JdSmartAcConfigFlow
 from custom_components.jd_smart.const import (
     CONF_COOKIE,
+    CONF_FEED_ID,
     CONF_TGT,
     DOMAIN,
-    auth_refresh_notification_id,
+    auth_refresh_notification_ids,
 )
 
 
@@ -20,7 +21,11 @@ async def test_manual_auth_update_clears_retry_notification(hass) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
         entry_id="entry-id",
-        data={CONF_COOKIE: "old-cookie", CONF_TGT: "old-tgt"},
+        data={
+            CONF_COOKIE: "old-cookie",
+            CONF_TGT: "old-tgt",
+            CONF_FEED_ID: "feed-id",
+        },
     )
     entry.add_to_hass(hass)
     flow = JdSmartAcConfigFlow()
@@ -41,7 +46,7 @@ async def test_manual_auth_update_clears_retry_notification(hass) -> None:
             {CONF_COOKIE: "new-cookie", CONF_TGT: "new-tgt"}
         )
 
-    dismiss_notification.assert_called_once_with(
-        hass,
-        auth_refresh_notification_id("entry-id"),
-    )
+    assert dismiss_notification.call_args_list == [
+        ((hass, notification_id), {})
+        for notification_id in auth_refresh_notification_ids("entry-id", ("feed-id",))
+    ]

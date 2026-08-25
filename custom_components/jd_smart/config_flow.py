@@ -46,7 +46,7 @@ from .const import (
     DEFAULT_USER_AGENT,
     DOMAIN,
     LOGGER,
-    auth_refresh_notification_id,
+    auth_refresh_notification_ids,
 )
 
 ACTION_ADD_DEVICE = "add_device"
@@ -99,9 +99,7 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             vol.Optional(
                 CONF_SGM_CONTEXT, default=defaults.get(CONF_SGM_CONTEXT, "")
             ): str,
-            vol.Optional(
-                CONF_DEVICE_ID, default=defaults.get(CONF_DEVICE_ID, "")
-            ): str,
+            vol.Optional(CONF_DEVICE_ID, default=defaults.get(CONF_DEVICE_ID, "")): str,
             vol.Optional(
                 CONF_PLATFORM, default=defaults.get(CONF_PLATFORM, DEFAULT_PLATFORM)
             ): str,
@@ -115,9 +113,7 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             ): str,
             vol.Optional(
                 CONF_PLATFORM_VERSION,
-                default=defaults.get(
-                    CONF_PLATFORM_VERSION, DEFAULT_PLATFORM_VERSION
-                ),
+                default=defaults.get(CONF_PLATFORM_VERSION, DEFAULT_PLATFORM_VERSION),
             ): str,
             vol.Optional(
                 CONF_CHANNEL, default=defaults.get(CONF_CHANNEL, DEFAULT_CHANNEL)
@@ -250,7 +246,9 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
 
                 self._auth_data = data
                 self._target_entry = None
-                configured_feed_ids = _configured_feed_ids(self._async_current_entries())
+                configured_feed_ids = _configured_feed_ids(
+                    self._async_current_entries()
+                )
                 self._devices = [
                     device
                     for device in devices
@@ -345,7 +343,9 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
         devices = getattr(self, "_devices", [])
         if user_input is not None:
             selected = user_input[CONF_SELECTED_DEVICES]
-            selected_feed_ids = {selected} if isinstance(selected, str) else set(selected)
+            selected_feed_ids = (
+                {selected} if isinstance(selected, str) else set(selected)
+            )
             selected_devices = [
                 device for device in devices if device.feed_id in selected_feed_ids
             ]
@@ -426,10 +426,13 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
                 LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
             else:
-                persistent_notification.async_dismiss(
-                    self.hass,
-                    auth_refresh_notification_id(entry.entry_id),
+                feed_ids = tuple(
+                    device[CONF_FEED_ID] for device in _entry_devices(entry.data)
                 )
+                for notification_id in auth_refresh_notification_ids(
+                    entry.entry_id, feed_ids
+                ):
+                    persistent_notification.async_dismiss(self.hass, notification_id)
                 return self.async_update_reload_and_abort(
                     entry,
                     data=data,
@@ -450,10 +453,13 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
                 if key in auth_data:
                     data[key] = auth_data[key]
             self.hass.config_entries.async_update_entry(entry, data=data)
-            persistent_notification.async_dismiss(
-                self.hass,
-                auth_refresh_notification_id(entry.entry_id),
+            feed_ids = tuple(
+                device[CONF_FEED_ID] for device in _entry_devices(entry.data)
             )
+            for notification_id in auth_refresh_notification_ids(
+                entry.entry_id, feed_ids
+            ):
+                persistent_notification.async_dismiss(self.hass, notification_id)
             await self.hass.config_entries.async_reload(entry.entry_id)
 
 
@@ -485,8 +491,7 @@ def _merge_entry_devices(
 ) -> dict[str, Any]:
     """Merge selected devices into an existing entry."""
     devices = {
-        device[CONF_FEED_ID]: dict(device)
-        for device in _entry_devices(entry_data)
+        device[CONF_FEED_ID]: dict(device) for device in _entry_devices(entry_data)
     }
     for device in selected_devices:
         devices[device.feed_id] = {

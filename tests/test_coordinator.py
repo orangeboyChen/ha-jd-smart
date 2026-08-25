@@ -21,7 +21,7 @@ from custom_components.jd_smart.const import (
     CONF_COOKIE,
     CONF_TGT,
     DOMAIN,
-    auth_refresh_notification_id,
+    auth_refresh_notification_ids,
 )
 from custom_components.jd_smart.coordinator import (
     JdSmartAuthRetryManager,
@@ -65,9 +65,10 @@ def test_backoff_updates_one_notification_and_caps_at_one_hour(hass) -> None:
 
             assert timedelta(minutes=expected_minutes) <= retry_at - before
             assert retry_at - before < timedelta(minutes=expected_minutes, seconds=1)
-            assert create_notification.call_args.kwargs[
-                "notification_id"
-            ] == auth_refresh_notification_id("entry-id")
+            assert (
+                create_notification.call_args.kwargs["notification_id"]
+                == (auth_refresh_notification_ids("entry-id")[0])
+            )
             assert f"Attempt: {attempt}." in create_notification.call_args.args[1]
             manager._retry_cancel = None
 
@@ -96,7 +97,7 @@ async def test_scheduled_retry_validates_and_clears_failure(hass) -> None:
     """A scheduled refresh validates a snapshot before clearing the failure."""
     _entry, client, manager = _create_manager(hass)
     client.async_refresh_token.return_value = ("new-tgt", "new-cookie")
-    coordinator = SimpleNamespace(async_request_refresh=AsyncMock())
+    coordinator = SimpleNamespace(feed_id="feed-id", async_request_refresh=AsyncMock())
     coordinator.async_request_refresh.side_effect = manager.async_mark_recovered
     manager.register_coordinator(coordinator)
     manager._failure_count = 2
@@ -107,7 +108,9 @@ async def test_scheduled_retry_validates_and_clears_failure(hass) -> None:
         await manager._async_retry()
 
     coordinator.async_request_refresh.assert_awaited_once()
-    dismiss_notification.assert_called_once()
+    dismiss_notification.assert_any_call(
+        hass, auth_refresh_notification_ids("entry-id")[0]
+    )
     assert manager._failure_count == 0
 
 
@@ -155,6 +158,33 @@ async def test_refresh_failure_schedules_retry_without_repeating(hass) -> None:
     client.async_refresh_token.assert_awaited_once()
     track.assert_called_once()
     create_notification.assert_called_once()
+
+
+def test_failure_cleans_legacy_notifications(hass) -> None:
+    """New failures dismiss legacy global and per-device notifications."""
+    _entry, _client, manager = _create_manager(hass)
+    coordinator = SimpleNamespace(feed_id="feed-id")
+    manager.register_coordinator(coordinator)
+
+    with (
+        patch(
+            "custom_components.jd_smart.coordinator.async_track_point_in_utc_time",
+            return_value=Mock(),
+        ),
+        patch(
+            "custom_components.jd_smart.coordinator.persistent_notification.async_dismiss"
+        ) as dismiss_notification,
+        patch(
+            "custom_components.jd_smart.coordinator.persistent_notification.async_create"
+        ),
+    ):
+        manager.async_schedule_failure(JdSmartAuthError("expired"))
+
+    dismissed_ids = [call.args[1] for call in dismiss_notification.call_args_list]
+    assert dismissed_ids == [
+        "jd_smart_token_refresh_failed",
+        "jd_smart_feed-id_token_refresh_failed",
+    ]
 
 
 async def test_snapshot_must_validate_refreshed_credentials(hass) -> None:
@@ -213,9 +243,8 @@ async def test_successful_refresh_persists_and_clears_notification(hass) -> None
 
     assert result is snapshot
     assert entry.data[CONF_TGT] == "new-tgt"
-    dismiss_notification.assert_called_with(
-        hass,
-        auth_refresh_notification_id("entry-id"),
+    dismiss_notification.assert_any_call(
+        hass, auth_refresh_notification_ids("entry-id")[0]
     )
 
 

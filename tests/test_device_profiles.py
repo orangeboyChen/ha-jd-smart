@@ -63,6 +63,30 @@ def test_parse_device_profile_from_server_card() -> None:
     ]
 
 
+def test_parse_device_profile_from_grouped_server_response() -> None:
+    """Inherit category metadata from the platform grouping when needed."""
+    devices = _parse_devices(
+        {
+            "platform_list": [
+                {
+                    "category_id": 101001,
+                    "category_name": "Air conditioner",
+                    "cards": [
+                        {
+                            "feed_id": "feed-id",
+                            "card_name": "Air conditioner",
+                            "config_type": 1113,
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert devices[0].category_id == "101001"
+    assert devices[0].category_name == "Air conditioner"
+
+
 def test_supported_category_accepts_multiple_card_configurations() -> None:
     """Route an air conditioner without depending on its card configuration."""
     device = JdSmartDevice(

@@ -17,7 +17,7 @@ This repository is for users who own an air conditioner controlled through the J
 - Select entity for horizontal swing direction.
 - Sensor entities for current temperature, humidity, and diagnostic values.
 - Config flow UI.
-- `tgt` token refresh support.
+- Automatic `tgt` token refresh with backoff retries and recovery notifications.
 
 ## Installation
 

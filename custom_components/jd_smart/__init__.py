@@ -4,21 +4,22 @@ from __future__ import annotations
 
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import JdSmartCredentials, JdSmartDeviceProfile, JdSmartClient
+from .api import JdSmartClient, JdSmartCredentials, JdSmartDeviceProfile
 from .const import (
     CONF_APP_VERSION,
     CONF_CHANNEL,
     CONF_COOKIE,
-    CONF_DEVICE_NAME,
-    CONF_DEVICES,
     CONF_DEVICE_ID,
     CONF_DEVICE_MODEL,
+    CONF_DEVICE_NAME,
+    CONF_DEVICES,
     CONF_FEED_ID,
+    CONF_PIN,
     CONF_PLATFORM,
     CONF_PLATFORM_VERSION,
-    CONF_PIN,
     CONF_SGM_CONTEXT,
     CONF_TGT,
     CONF_USER_AGENT,
@@ -30,7 +31,12 @@ from .const import (
     DEFAULT_PLATFORM_VERSION,
     DEFAULT_USER_AGENT,
 )
-from .coordinator import JdSmartConfigEntry, JdSmartCoordinator, JdSmartRuntimeData
+from .coordinator import (
+    JdSmartAuthRetryManager,
+    JdSmartConfigEntry,
+    JdSmartCoordinator,
+    JdSmartRuntimeData,
+)
 
 PLATFORMS: list[Platform] = [
     Platform.CLIMATE,
@@ -62,6 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> b
             user_agent=entry.data.get(CONF_USER_AGENT, DEFAULT_USER_AGENT),
         ),
     )
+    auth_retry_manager = JdSmartAuthRetryManager(hass, entry, client)
     coordinators: dict[str, JdSmartCoordinator] = {}
     for device in _entry_devices(entry.data):
         feed_id = device[CONF_FEED_ID]
@@ -71,13 +78,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> b
             client,
             feed_id,
             device.get(CONF_DEVICE_NAME),
+            auth_retry_manager,
         )
-        await coordinator.async_config_entry_first_refresh()
         coordinators[feed_id] = coordinator
+        try:
+            await coordinator.async_config_entry_first_refresh()
+        except ConfigEntryNotReady:
+            if not coordinator.auth_retry_pending:
+                raise
 
     entry.runtime_data = JdSmartRuntimeData(
         client=client,
         coordinators=coordinators,
+        auth_retry_manager=auth_retry_manager,
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -86,6 +99,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> b
 async def async_unload_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> bool:
     """Unload a config entry."""
     if runtime_data := getattr(entry, "runtime_data", None):
+        runtime_data.auth_retry_manager.async_shutdown()
         for coordinator in runtime_data.coordinators.values():
             coordinator.async_shutdown()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

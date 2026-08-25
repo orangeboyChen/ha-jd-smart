@@ -1,7 +1,7 @@
 """Constants for the JD Smart integration."""
 
-from datetime import timedelta
 import logging
+from datetime import timedelta
 
 DOMAIN = "jd_smart"
 LOGGER = logging.getLogger(__package__)
@@ -9,6 +9,13 @@ LOGGER = logging.getLogger(__package__)
 DEFAULT_SCAN_INTERVAL = timedelta(seconds=60)
 FAST_POLL_INTERVAL = timedelta(seconds=2)
 FAST_POLL_DURATION = timedelta(seconds=10)
+AUTH_REFRESH_RETRY_DELAYS = (
+    timedelta(minutes=5),
+    timedelta(minutes=10),
+    timedelta(minutes=20),
+    timedelta(minutes=40),
+    timedelta(minutes=60),
+)
 
 CONF_APP_VERSION = "app_version"
 CONF_CHANNEL = "channel"
@@ -43,3 +50,8 @@ HMAC_KEY = "e685c8d1daa7e4dec8821a3df41c0b34a56db779"
 
 ATTR_MANUFACTURER = "JD Smart"
 UPDATE_AUTH_FAILURE_THRESHOLD = 3
+
+
+def auth_refresh_notification_id(entry_id: str) -> str:
+    """Return the persistent notification ID for auth refresh retries."""
+    return f"{DOMAIN}_{entry_id}_auth_refresh_failed"

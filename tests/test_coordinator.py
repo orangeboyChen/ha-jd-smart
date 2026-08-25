@@ -111,6 +111,30 @@ async def test_scheduled_retry_validates_and_clears_failure(hass) -> None:
     assert manager._failure_count == 0
 
 
+async def test_scheduled_validation_401_reschedules_backoff(hass) -> None:
+    """A 401 during scheduled validation schedules another retry."""
+    _entry, client, manager = _create_manager(hass)
+    client.credentials.tgt = "new-tgt"
+    manager._validating_refresh = True
+
+    with (
+        patch(
+            "custom_components.jd_smart.coordinator.async_track_point_in_utc_time",
+            return_value=Mock(),
+        ) as track,
+        patch(
+            "custom_components.jd_smart.coordinator.persistent_notification.async_create"
+        ) as create_notification,
+    ):
+        assert not await manager.async_handle_auth_failure(
+            "new-tgt", JdSmartAuthError("still expired")
+        )
+
+    assert not manager._validating_refresh
+    track.assert_called_once()
+    create_notification.assert_called_once()
+
+
 async def test_refresh_failure_schedules_retry_without_repeating(hass) -> None:
     """A failed immediate refresh schedules one retry for all later requests."""
     _entry, client, manager = _create_manager(hass)

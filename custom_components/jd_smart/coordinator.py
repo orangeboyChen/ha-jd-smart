@@ -75,12 +75,17 @@ class JdSmartAuthRetryManager:
     async def async_handle_auth_failure(
         self,
         failed_tgt: str,
+        auth_error: Exception | None = None,
     ) -> bool:
         """Refresh credentials immediately when no retry is already pending."""
         async with self._refresh_lock:
             if failed_tgt != self.client.credentials.tgt:
                 return True
-            if self._retry_cancel is not None or self._validating_refresh:
+            if self._retry_cancel is not None:
+                return False
+            if self._validating_refresh:
+                if auth_error is not None:
+                    self.async_schedule_failure(auth_error)
                 return False
             return await self._async_refresh_locked()
 
@@ -230,7 +235,9 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
             return snapshot
         except JdSmartAuthError as err:
             LOGGER.info("JD Smart snapshot authentication failed; refreshing token")
-            if not await self.auth_retry_manager.async_handle_auth_failure(failed_tgt):
+            if not await self.auth_retry_manager.async_handle_auth_failure(
+                failed_tgt, err
+            ):
                 self.auth_retry_pending = True
                 raise UpdateFailed(
                     "JD Smart authentication refresh is scheduled"
@@ -269,7 +276,7 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
             )
             try:
                 if not await self.auth_retry_manager.async_handle_auth_failure(
-                    failed_tgt
+                    failed_tgt, err
                 ):
                     raise UpdateFailed("JD Smart authentication refresh is scheduled")
                 snapshot = await self.client.async_control_streams(

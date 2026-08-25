@@ -11,6 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import JdSmartConfigEntry
+from .const import DEVICE_TYPE_AIR_CONDITIONER
 from .entity import JdSmartEntity
 
 
@@ -43,6 +44,7 @@ async def async_setup_entry(
     async_add_entities(
         JdSmartSwitch(coordinator, description)
         for coordinator in entry.runtime_data.coordinators.values()
+        if coordinator.device_type == DEVICE_TYPE_AIR_CONDITIONER
         for description in SWITCHES
     )
 

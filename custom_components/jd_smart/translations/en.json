@@ -9,6 +9,7 @@
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
+            "unsupported_device": "This device type is not supported. A notification includes a link for submitting a pull request.",
             "token_refresh_failed": "Authentication refresh failed. Check the notification for details or enter new authentication data manually.",
             "unknown": "Unexpected error"
         },

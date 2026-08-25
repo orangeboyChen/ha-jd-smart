@@ -219,6 +219,7 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
         client: JdSmartClient,
         feed_id: str,
         device_name: str | None,
+        device_type: str,
         auth_retry_manager: JdSmartAuthRetryManager,
     ) -> None:
         """Initialize coordinator."""
@@ -232,6 +233,7 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
         self.client = client
         self.feed_id = feed_id
         self.device_name = device_name
+        self.device_type = device_type
         self.auth_retry_manager = auth_retry_manager
         self._fast_poll_cancel: Callable[[], None] | None = None
         self._consecutive_update_failures = 0

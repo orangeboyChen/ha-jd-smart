@@ -15,6 +15,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import JdSmartConfigEntry
+from .const import DEVICE_TYPE_AIR_CONDITIONER
 from .entity import JdSmartEntity
 
 MODE_TO_HVAC = {
@@ -66,6 +67,7 @@ async def async_setup_entry(
     async_add_entities(
         JdSmartClimate(coordinator)
         for coordinator in entry.runtime_data.coordinators.values()
+        if coordinator.device_type == DEVICE_TYPE_AIR_CONDITIONER
     )
 
 

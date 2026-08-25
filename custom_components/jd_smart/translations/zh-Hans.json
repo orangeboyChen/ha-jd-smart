@@ -9,6 +9,7 @@
         "error": {
             "cannot_connect": "连接失败",
             "invalid_auth": "认证无效",
+            "unsupported_device": "暂不支持此设备类型。通知中包含提交 Pull Request 的链接。",
             "token_refresh_failed": "鉴权刷新失败。请查看通知中的详细原因，或手动填写新的鉴权信息。",
             "unknown": "未知错误"
         },

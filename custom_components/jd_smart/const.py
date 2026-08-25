@@ -18,12 +18,17 @@ AUTH_REFRESH_RETRY_DELAYS = (
 )
 
 CONF_APP_VERSION = "app_version"
+CONF_CATEGORY_ID = "category_id"
+CONF_CATEGORY_NAME = "category_name"
 CONF_CHANNEL = "channel"
 CONF_COOKIE = "cookie"
+CONF_CONFIG_TYPE = "config_type"
 CONF_DEVICE_ID = "device_id"
 CONF_DEVICE_MODEL = "device_model"
 CONF_DEVICE_NAME = "device_name"
+CONF_DEVICE_TYPE = "device_type"
 CONF_DEVICES = "devices"
+CONF_DETAIL_TYPE = "detail_type"
 CONF_FEED_ID = "feed_id"
 CONF_PLATFORM = "platform"
 CONF_PLATFORM_VERSION = "platform_version"
@@ -50,6 +55,12 @@ HMAC_KEY = "e685c8d1daa7e4dec8821a3df41c0b34a56db779"
 
 ATTR_MANUFACTURER = "JD Smart"
 UPDATE_AUTH_FAILURE_THRESHOLD = 3
+
+DEVICE_TYPE_AIR_CONDITIONER = "air_conditioner"
+DEVICE_TYPE_PROFILES = {
+    ("101001", "1113"): DEVICE_TYPE_AIR_CONDITIONER,
+}
+PULL_REQUEST_URL = "https://github.com/orangeboyChen/ha-jd-smart/pulls"
 
 
 def auth_refresh_notification_ids(

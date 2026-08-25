@@ -15,6 +15,7 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_DEVICE_MODEL,
     CONF_DEVICE_NAME,
+    CONF_DEVICE_TYPE,
     CONF_DEVICES,
     CONF_FEED_ID,
     CONF_PIN,
@@ -30,6 +31,7 @@ from .const import (
     DEFAULT_PLATFORM,
     DEFAULT_PLATFORM_VERSION,
     DEFAULT_USER_AGENT,
+    DEVICE_TYPE_AIR_CONDITIONER,
 )
 from .coordinator import (
     JdSmartAuthRetryManager,
@@ -79,6 +81,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> b
                 client,
                 feed_id,
                 device.get(CONF_DEVICE_NAME),
+                device.get(CONF_DEVICE_TYPE, DEVICE_TYPE_AIR_CONDITIONER),
                 auth_retry_manager,
             )
             coordinators[feed_id] = coordinator
@@ -124,5 +127,6 @@ def _entry_devices(data: dict) -> list[dict[str, str]]:
         {
             CONF_FEED_ID: data[CONF_FEED_ID],
             CONF_DEVICE_NAME: data.get(CONF_DEVICE_NAME, ""),
+            CONF_DEVICE_TYPE: DEVICE_TYPE_AIR_CONDITIONER,
         }
     ]

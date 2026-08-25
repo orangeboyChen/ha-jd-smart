@@ -67,7 +67,7 @@ config/custom_components/jd_smart/
 https://api.smart.jd.com/c/service/integration/v1/getDeviceSnapshot_v1
 ```
 
-尽量从同一次请求中复制所有字段。不需要手动填写 `feed_id`。认证通过后，集成会自动拉取设备列表，并允许一次选择一个或多个空调设备；已经配置过的设备不会再出现在选择列表中。
+尽量从同一次请求中复制所有字段。不需要手动填写 `feed_id`。认证通过后，集成会自动拉取设备列表，并允许一次选择一个或多个空调设备；已经配置过的设备不会再出现在选择列表中。暂未支持的设备类型会显示通知，其中包含提交 Pull Request 的链接。
 
 `cookie`
 

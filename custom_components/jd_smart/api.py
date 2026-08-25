@@ -136,7 +136,10 @@ class JdSmartDevice:
     feed_id: str
     name: str
     device_id: str | None = None
+    category_id: str | None = None
     category_name: str | None = None
+    config_type: str | None = None
+    detail_type: str | None = None
     room_name: str | None = None
     version: str | None = None
 
@@ -974,8 +977,17 @@ def _parse_devices(data: Any) -> list[JdSmartDevice]:
                         device_id=_optional_str(
                             value.get("device_id", value.get("deviceId"))
                         ),
+                        category_id=_optional_str(
+                            value.get("category_id", value.get("categoryId"))
+                        ),
                         category_name=_optional_str(
                             value.get("category_name", value.get("categoryName"))
+                        ),
+                        config_type=_optional_str(
+                            value.get("config_type", value.get("configType"))
+                        ),
+                        detail_type=_optional_str(
+                            value.get("detail_type", value.get("detailType"))
                         ),
                         room_name=_optional_str(
                             value.get("room_name", value.get("roomName"))

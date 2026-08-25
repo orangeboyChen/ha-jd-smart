@@ -21,6 +21,7 @@ from custom_components.jd_smart.api import (
 from custom_components.jd_smart.const import (
     CONF_COOKIE,
     CONF_TGT,
+    DEVICE_TYPE_AIR_CONDITIONER,
     DOMAIN,
     auth_refresh_notification_ids,
 )
@@ -223,6 +224,7 @@ async def test_snapshot_must_validate_refreshed_credentials(hass) -> None:
         client,
         "feed-id",
         "Air conditioner",
+        DEVICE_TYPE_AIR_CONDITIONER,
         manager,
     )
 
@@ -256,6 +258,7 @@ async def test_successful_refresh_persists_and_clears_notification(hass) -> None
         client,
         "feed-id",
         "Air conditioner",
+        DEVICE_TYPE_AIR_CONDITIONER,
         manager,
     )
 

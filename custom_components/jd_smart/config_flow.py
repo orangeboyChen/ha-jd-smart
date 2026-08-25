@@ -24,12 +24,17 @@ from .api import (
 )
 from .const import (
     CONF_APP_VERSION,
+    CONF_CATEGORY_ID,
+    CONF_CATEGORY_NAME,
     CONF_CHANNEL,
     CONF_COOKIE,
+    CONF_CONFIG_TYPE,
     CONF_DEVICE_ID,
     CONF_DEVICE_MODEL,
     CONF_DEVICE_NAME,
+    CONF_DEVICE_TYPE,
     CONF_DEVICES,
+    CONF_DETAIL_TYPE,
     CONF_FEED_ID,
     CONF_PIN,
     CONF_PLATFORM,
@@ -44,8 +49,10 @@ from .const import (
     DEFAULT_PLATFORM,
     DEFAULT_PLATFORM_VERSION,
     DEFAULT_USER_AGENT,
+    DEVICE_TYPE_PROFILES,
     DOMAIN,
     LOGGER,
+    PULL_REQUEST_URL,
     auth_refresh_notification_ids,
 )
 
@@ -179,6 +186,42 @@ async def _fetch_devices(
         LOGGER.info("JD Smart device-list auth failed; refreshing token")
         await _refresh_auth(hass, data)
         return await _client_from_data(hass, data).async_get_devices()
+
+
+def _device_type(device: JdSmartDevice) -> str | None:
+    """Return the supported type matching a server device profile."""
+    if device.category_id is None or device.config_type is None:
+        return None
+    return DEVICE_TYPE_PROFILES.get((device.category_id, device.config_type))
+
+
+def _split_supported_devices(
+    devices: list[JdSmartDevice],
+) -> tuple[list[JdSmartDevice], list[JdSmartDevice]]:
+    """Split devices by whether their server profile is supported."""
+    supported = [device for device in devices if _device_type(device) is not None]
+    unsupported = [device for device in devices if _device_type(device) is None]
+    return supported, unsupported
+
+
+def _notify_unsupported_devices(hass: HomeAssistant, devices: list[JdSmartDevice]) -> None:
+    """Tell the user how to request support for unrecognized device profiles."""
+    profiles = "\n".join(
+        "- "
+        f"{device.name}: {device.category_name or 'Unknown category'} "
+        f"(category_id={device.category_id or 'unknown'}, "
+        f"config_type={device.config_type or 'unknown'})"
+        for device in devices
+    )
+    persistent_notification.async_create(
+        hass,
+        "The following JD Smart device profiles are not supported yet:\n"
+        f"{profiles}\n\n"
+        "Please include the profile and relevant stream information in a "
+        f"[pull request]({PULL_REQUEST_URL}).",
+        title="JD Smart device type unsupported",
+        notification_id=f"{DOMAIN}_unsupported_device_type",
+    )
 
 
 class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -352,35 +395,39 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
             if not selected_devices or len(selected_devices) != len(selected_feed_ids):
                 errors["base"] = "unknown"
             else:
-                first_device = selected_devices[0]
-                data = {
-                    **self._auth_data,
-                    CONF_FEED_ID: first_device.feed_id,
-                    CONF_DEVICE_NAME: first_device.name,
-                    CONF_DEVICES: [
-                        {
-                            CONF_FEED_ID: device.feed_id,
-                            CONF_DEVICE_NAME: device.name,
-                        }
-                        for device in selected_devices
-                    ],
-                }
-                title = (
-                    first_device.name
-                    if len(selected_devices) == 1
-                    else f"JD Smart ({len(selected_devices)} devices)"
+                supported_devices, unsupported_devices = _split_supported_devices(
+                    selected_devices
                 )
-                target_entry = getattr(self, "_target_entry", None)
-                if target_entry is not None:
-                    return self.async_update_reload_and_abort(
-                        target_entry,
-                        data=_merge_entry_devices(
-                            target_entry.data,
-                            data,
-                            selected_devices,
-                        ),
+                if unsupported_devices:
+                    _notify_unsupported_devices(self.hass, unsupported_devices)
+                if not supported_devices:
+                    errors["base"] = "unsupported_device"
+                else:
+                    first_device = supported_devices[0]
+                    data = {
+                        **self._auth_data,
+                        CONF_FEED_ID: first_device.feed_id,
+                        CONF_DEVICE_NAME: first_device.name,
+                        CONF_DEVICES: [
+                            _entry_device(device) for device in supported_devices
+                        ],
+                    }
+                    title = (
+                        first_device.name
+                        if len(supported_devices) == 1
+                        else f"JD Smart ({len(supported_devices)} devices)"
                     )
-                return self.async_create_entry(title=title, data=data)
+                    target_entry = getattr(self, "_target_entry", None)
+                    if target_entry is not None:
+                        return self.async_update_reload_and_abort(
+                            target_entry,
+                            data=_merge_entry_devices(
+                                target_entry.data,
+                                data,
+                                supported_devices,
+                            ),
+                        )
+                    return self.async_create_entry(title=title, data=data)
 
         options = [
             selector.SelectOptionDict(value=device.feed_id, label=_device_label(device))
@@ -470,6 +517,19 @@ def _device_label(device: JdSmartDevice) -> str:
     return f"{device.name}{suffix} ({device.feed_id})"
 
 
+def _entry_device(device: JdSmartDevice) -> dict[str, str]:
+    """Serialize a selected device and its server profile."""
+    return {
+        CONF_FEED_ID: device.feed_id,
+        CONF_DEVICE_NAME: device.name,
+        CONF_CATEGORY_ID: device.category_id or "",
+        CONF_CATEGORY_NAME: device.category_name or "",
+        CONF_CONFIG_TYPE: device.config_type or "",
+        CONF_DETAIL_TYPE: device.detail_type or "",
+        CONF_DEVICE_TYPE: _device_type(device) or "",
+    }
+
+
 def _entry_devices(data: dict[str, Any]) -> list[dict[str, str]]:
     """Return configured devices from new or legacy entry data."""
     if devices := data.get(CONF_DEVICES):
@@ -494,10 +554,7 @@ def _merge_entry_devices(
         device[CONF_FEED_ID]: dict(device) for device in _entry_devices(entry_data)
     }
     for device in selected_devices:
-        devices[device.feed_id] = {
-            CONF_FEED_ID: device.feed_id,
-            CONF_DEVICE_NAME: device.name,
-        }
+        devices[device.feed_id] = _entry_device(device)
 
     merged_devices = list(devices.values())
     first_device = merged_devices[0]

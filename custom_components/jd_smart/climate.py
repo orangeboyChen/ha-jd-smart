@@ -16,7 +16,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import JdSmartConfigEntry
 from .const import AIR_CONDITIONER_REQUIRED_STREAMS, DEVICE_TYPE_AIR_CONDITIONER
-from .entity import JdSmartEntity, coordinator_has_streams
+from .entity import JdSmartEntity
 
 MODE_TO_HVAC = {
     "0": HVACMode.COOL,
@@ -74,7 +74,10 @@ async def async_setup_entry(
         JdSmartClimate(coordinator)
         for coordinator in entry.runtime_data.coordinators.values()
         if coordinator.device_type == DEVICE_TYPE_AIR_CONDITIONER
-        if coordinator_has_streams(coordinator, AIR_CONDITIONER_REQUIRED_STREAMS)
+        if (
+            coordinator.data is None
+            or AIR_CONDITIONER_REQUIRED_STREAMS <= coordinator.data.streams.keys()
+        )
     )
 
 

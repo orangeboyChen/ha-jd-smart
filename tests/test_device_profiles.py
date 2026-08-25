@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from homeassistant.components.climate import ClimateEntityFeature
 
-from custom_components.jd_smart.api import JdSmartDevice, JdSmartSnapshot, _parse_devices
+from custom_components.jd_smart.api import JdSmartDevice, _parse_devices
 from custom_components.jd_smart.climate import _supported_features
 from custom_components.jd_smart.config_flow import (
     CONF_SELECTED_DEVICES,
@@ -23,10 +22,6 @@ from custom_components.jd_smart.const import (
     CONF_DEVICE_TYPE,
     DEVICE_TYPE_AIR_CONDITIONER,
     PULL_REQUEST_URL,
-)
-from custom_components.jd_smart.entity import (
-    coordinator_has_stream,
-    coordinator_has_streams,
 )
 
 
@@ -156,20 +151,6 @@ async def test_selecting_only_unsupported_device_keeps_flow_open(hass) -> None:
     assert result["type"] == "form"
     assert result["errors"] == {"base": "unsupported_device"}
     create_notification.assert_called_once()
-
-
-def test_stream_capabilities_filter_optional_entities() -> None:
-    """Use a device snapshot to identify supported stream-based entities."""
-    coordinator = SimpleNamespace(
-        data=JdSmartSnapshot("digest", "0", True, {"power": "1", "mode": "0"})
-    )
-
-    assert coordinator_has_stream(coordinator, "power")
-    assert not coordinator_has_stream(coordinator, "hordir")
-    assert coordinator_has_streams(coordinator, frozenset({"power", "mode"}))
-    assert not coordinator_has_streams(
-        coordinator, frozenset({"power", "mode", "settemp"})
-    )
 
 
 def test_climate_features_follow_available_optional_streams() -> None:

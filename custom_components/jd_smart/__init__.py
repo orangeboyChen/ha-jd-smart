@@ -70,22 +70,26 @@ async def async_setup_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> b
     )
     auth_retry_manager = JdSmartAuthRetryManager(hass, entry, client)
     coordinators: dict[str, JdSmartCoordinator] = {}
-    for device in _entry_devices(entry.data):
-        feed_id = device[CONF_FEED_ID]
-        coordinator = JdSmartCoordinator(
-            hass,
-            entry,
-            client,
-            feed_id,
-            device.get(CONF_DEVICE_NAME),
-            auth_retry_manager,
-        )
-        coordinators[feed_id] = coordinator
-        try:
-            await coordinator.async_config_entry_first_refresh()
-        except ConfigEntryNotReady:
-            if not coordinator.auth_retry_pending:
-                raise
+    try:
+        for device in _entry_devices(entry.data):
+            feed_id = device[CONF_FEED_ID]
+            coordinator = JdSmartCoordinator(
+                hass,
+                entry,
+                client,
+                feed_id,
+                device.get(CONF_DEVICE_NAME),
+                auth_retry_manager,
+            )
+            coordinators[feed_id] = coordinator
+            try:
+                await coordinator.async_config_entry_first_refresh()
+            except ConfigEntryNotReady:
+                if not coordinator.auth_retry_pending:
+                    raise
+    except Exception:
+        auth_retry_manager.async_shutdown()
+        raise
 
     entry.runtime_data = JdSmartRuntimeData(
         client=client,

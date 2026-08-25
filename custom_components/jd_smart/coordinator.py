@@ -97,6 +97,9 @@ class JdSmartAuthRetryManager:
             LOGGER.warning("JD Smart token refresh failed: %s", err)
             self.async_schedule_failure(err)
             return False
+        if self._shutdown:
+            LOGGER.info("Discarding JD Smart refresh result after shutdown")
+            return False
 
         self.hass.config_entries.async_update_entry(
             self.config_entry,

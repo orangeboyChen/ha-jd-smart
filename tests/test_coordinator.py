@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -158,6 +159,28 @@ async def test_refresh_failure_schedules_retry_without_repeating(hass) -> None:
     client.async_refresh_token.assert_awaited_once()
     track.assert_called_once()
     create_notification.assert_called_once()
+
+
+async def test_shutdown_discards_inflight_refresh_result(hass) -> None:
+    """An in-flight refresh cannot overwrite credentials after shutdown."""
+    entry, client, manager = _create_manager(hass)
+    refresh_started = asyncio.Event()
+    release_refresh = asyncio.Event()
+
+    async def refresh_token():
+        refresh_started.set()
+        await release_refresh.wait()
+        return "stale-tgt", "stale-cookie"
+
+    client.async_refresh_token.side_effect = refresh_token
+    refresh_task = asyncio.create_task(manager.async_handle_auth_failure("old-tgt"))
+    await refresh_started.wait()
+    manager.async_shutdown()
+    release_refresh.set()
+
+    assert not await refresh_task
+    assert entry.data[CONF_TGT] == "old-tgt"
+    assert entry.data[CONF_COOKIE] == "old-cookie"
 
 
 def test_failure_cleans_legacy_notifications(hass) -> None:

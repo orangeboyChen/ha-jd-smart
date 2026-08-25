@@ -123,6 +123,15 @@ https://api.smart.jd.com/c/service/integration/v1/getDeviceSnapshot_v1
 
 传感器实体包括当前温度、当前湿度，以及 TVOC、运行时间、蜂鸣器原始值、MDP 模式、保护状态等诊断值。
 
+## 开发
+
+使用 `uv` 安装测试环境并运行测试：
+
+```bash
+uv sync --group test
+uv run --group test pytest
+```
+
 ## 免责声明
 
 本项目是非官方集成，与京东、京东小家、Home Assistant 均无任何关联。使用本集成

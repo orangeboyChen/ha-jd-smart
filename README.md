@@ -129,6 +129,15 @@ The select entity controls horizontal swing direction.
 
 Sensor entities include current temperature, current humidity, TVOC, runtime counters, speaker raw value, MDP mode, protection state, and other diagnostic values.
 
+## Development
+
+Install the test environment and run the test suite with `uv`:
+
+```bash
+uv sync --group test
+uv run --group test pytest
+```
+
 ## Disclaimer
 
 This is an unofficial integration and is not affiliated with JD.com, JD Smart, or

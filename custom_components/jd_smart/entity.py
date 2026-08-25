@@ -28,3 +28,17 @@ class JdSmartEntity(CoordinatorEntity[JdSmartCoordinator]):
     def streams(self) -> dict[str, str]:
         """Return latest streams."""
         return self.coordinator.data.streams if self.coordinator.data else {}
+
+
+def coordinator_has_stream(
+    coordinator: JdSmartCoordinator, stream_id: str
+) -> bool:
+    """Return whether a coordinator supports a stream when data is available."""
+    return coordinator.data is None or stream_id in coordinator.data.streams
+
+
+def coordinator_has_streams(
+    coordinator: JdSmartCoordinator, stream_ids: frozenset[str]
+) -> bool:
+    """Return whether a coordinator supports all streams when data is available."""
+    return coordinator.data is None or stream_ids <= coordinator.data.streams.keys()

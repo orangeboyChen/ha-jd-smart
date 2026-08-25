@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import JdSmartConfigEntry
 from .const import DEVICE_TYPE_AIR_CONDITIONER
-from .entity import JdSmartEntity
+from .entity import JdSmartEntity, coordinator_has_stream
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -99,6 +99,7 @@ async def async_setup_entry(
         for coordinator in entry.runtime_data.coordinators.values()
         if coordinator.device_type == DEVICE_TYPE_AIR_CONDITIONER
         for description in SENSORS
+        if coordinator_has_stream(coordinator, description.stream_id)
     )
 
 

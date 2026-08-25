@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from custom_components.jd_smart.api import JdSmartDevice, _parse_devices
+from custom_components.jd_smart.api import JdSmartDevice, JdSmartSnapshot, _parse_devices
 from custom_components.jd_smart.config_flow import (
     CONF_SELECTED_DEVICES,
     JdSmartAcConfigFlow,
@@ -19,6 +20,10 @@ from custom_components.jd_smart.const import (
     CONF_DEVICE_TYPE,
     DEVICE_TYPE_AIR_CONDITIONER,
     PULL_REQUEST_URL,
+)
+from custom_components.jd_smart.entity import (
+    coordinator_has_stream,
+    coordinator_has_streams,
 )
 
 
@@ -55,13 +60,13 @@ def test_parse_device_profile_from_server_card() -> None:
     ]
 
 
-def test_supported_profile_is_persisted_with_device() -> None:
-    """Store the server profile required to select an entity handler."""
+def test_supported_category_accepts_multiple_card_configurations() -> None:
+    """Route an air conditioner without depending on its card configuration."""
     device = JdSmartDevice(
         feed_id="feed-id",
         name="Air conditioner",
         category_id="101001",
-        config_type="1113",
+        config_type="another-card-configuration",
     )
 
     assert _device_type(device) == DEVICE_TYPE_AIR_CONDITIONER
@@ -70,14 +75,14 @@ def test_supported_profile_is_persisted_with_device() -> None:
         "device_name": "Air conditioner",
         CONF_CATEGORY_ID: "101001",
         "category_name": "",
-        CONF_CONFIG_TYPE: "1113",
+        CONF_CONFIG_TYPE: "another-card-configuration",
         "detail_type": "",
         CONF_DEVICE_TYPE: DEVICE_TYPE_AIR_CONDITIONER,
     }
 
 
-def test_unsupported_profile_creates_pull_request_notification(hass) -> None:
-    """Guide users to contribute support for an unknown device profile."""
+def test_unsupported_category_creates_pull_request_notification(hass) -> None:
+    """Guide users to contribute support for an unknown device category."""
     device = JdSmartDevice(
         feed_id="feed-id",
         name="Unsupported device",
@@ -102,7 +107,7 @@ def test_unsupported_profile_creates_pull_request_notification(hass) -> None:
 
 
 async def test_selecting_only_unsupported_device_keeps_flow_open(hass) -> None:
-    """Show the unsupported-profile error after notifying the user."""
+    """Show the unsupported-category error after notifying the user."""
     device = JdSmartDevice(
         feed_id="feed-id",
         name="Unsupported device",
@@ -124,3 +129,17 @@ async def test_selecting_only_unsupported_device_keeps_flow_open(hass) -> None:
     assert result["type"] == "form"
     assert result["errors"] == {"base": "unsupported_device"}
     create_notification.assert_called_once()
+
+
+def test_stream_capabilities_filter_optional_entities() -> None:
+    """Use a device snapshot to identify supported stream-based entities."""
+    coordinator = SimpleNamespace(
+        data=JdSmartSnapshot("digest", "0", True, {"power": "1", "mode": "0"})
+    )
+
+    assert coordinator_has_stream(coordinator, "power")
+    assert not coordinator_has_stream(coordinator, "hordir")
+    assert coordinator_has_streams(coordinator, frozenset({"power", "mode"}))
+    assert not coordinator_has_streams(
+        coordinator, frozenset({"power", "mode", "settemp"})
+    )

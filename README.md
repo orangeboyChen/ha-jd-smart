@@ -72,7 +72,7 @@ https://api.smart.jd.com/c/service/integration/v1/getDeviceSnapshot_v1
 Use values from the same request whenever possible. You do not need to enter
 `feed_id` manually. After authentication, the integration fetches the available
 devices and lets you select one or more air conditioners. Devices that are
-already configured are hidden from the selection list. Unsupported device types
+already configured are hidden from the selection list. Unsupported device categories
 show a notification with a pull request link.
 
 `cookie`

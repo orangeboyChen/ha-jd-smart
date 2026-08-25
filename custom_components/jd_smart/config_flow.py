@@ -49,7 +49,7 @@ from .const import (
     DEFAULT_PLATFORM,
     DEFAULT_PLATFORM_VERSION,
     DEFAULT_USER_AGENT,
-    DEVICE_TYPE_PROFILES,
+    DEVICE_TYPE_BY_CATEGORY,
     DOMAIN,
     LOGGER,
     PULL_REQUEST_URL,
@@ -189,23 +189,23 @@ async def _fetch_devices(
 
 
 def _device_type(device: JdSmartDevice) -> str | None:
-    """Return the supported type matching a server device profile."""
-    if device.category_id is None or device.config_type is None:
+    """Return the supported type matching a server device category."""
+    if device.category_id is None:
         return None
-    return DEVICE_TYPE_PROFILES.get((device.category_id, device.config_type))
+    return DEVICE_TYPE_BY_CATEGORY.get(device.category_id)
 
 
 def _split_supported_devices(
     devices: list[JdSmartDevice],
 ) -> tuple[list[JdSmartDevice], list[JdSmartDevice]]:
-    """Split devices by whether their server profile is supported."""
+    """Split devices by whether their server category is supported."""
     supported = [device for device in devices if _device_type(device) is not None]
     unsupported = [device for device in devices if _device_type(device) is None]
     return supported, unsupported
 
 
 def _notify_unsupported_devices(hass: HomeAssistant, devices: list[JdSmartDevice]) -> None:
-    """Tell the user how to request support for unrecognized device profiles."""
+    """Tell the user how to request support for an unrecognized category."""
     profiles = "\n".join(
         "- "
         f"{device.name}: {device.category_name or 'Unknown category'} "
@@ -215,7 +215,7 @@ def _notify_unsupported_devices(hass: HomeAssistant, devices: list[JdSmartDevice
     )
     persistent_notification.async_create(
         hass,
-        "The following JD Smart device profiles are not supported yet:\n"
+        "The following JD Smart device categories are not supported yet:\n"
         f"{profiles}\n\n"
         "Please include the profile and relevant stream information in a "
         f"[pull request]({PULL_REQUEST_URL}).",

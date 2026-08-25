@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, patch
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.jd_smart import async_setup_entry
+from custom_components.jd_smart import (
+    _unsupported_stream_layout_notification_id,
+    async_setup_entry,
+)
 from custom_components.jd_smart.api import (
     JdSmartAuthError,
     JdSmartSnapshot,
@@ -114,3 +117,46 @@ async def test_setup_notifies_for_unsupported_stream_layout(hass) -> None:
     assert "category_id=101001" in message
     assert "mode, power" in message
     assert PULL_REQUEST_URL in message
+
+
+async def test_setup_clears_recovered_stream_layout_notification(hass) -> None:
+    """Dismiss the warning when an air conditioner has its core streams."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="entry-id",
+        data={
+            CONF_COOKIE: "cookie",
+            CONF_TGT: "tgt",
+            CONF_DEVICES: [
+                {
+                    CONF_FEED_ID: "feed-id",
+                    CONF_DEVICE_NAME: "Air conditioner",
+                    CONF_DEVICE_TYPE: DEVICE_TYPE_AIR_CONDITIONER,
+                }
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+    client = AsyncMock()
+    client.credentials.tgt = "tgt"
+    client.async_get_snapshot.return_value = JdSmartSnapshot(
+        "digest", "0", True, {"power": "1", "mode": "0", "settemp": "25"}
+    )
+
+    with (
+        patch("custom_components.jd_smart.JdSmartClient", return_value=client),
+        patch(
+            "custom_components.jd_smart.persistent_notification.async_dismiss"
+        ) as dismiss_notification,
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new=AsyncMock(),
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+
+    dismiss_notification.assert_any_call(
+        hass,
+        _unsupported_stream_layout_notification_id("feed-id"),
+    )

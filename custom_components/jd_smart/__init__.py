@@ -100,6 +100,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> b
             else:
                 if _is_unsupported_stream_layout(device, coordinator):
                     _notify_unsupported_stream_layout(hass, device, coordinator)
+                elif (
+                    device.get(CONF_DEVICE_TYPE, DEVICE_TYPE_AIR_CONDITIONER)
+                    == DEVICE_TYPE_AIR_CONDITIONER
+                ):
+                    persistent_notification.async_dismiss(
+                        hass,
+                        _unsupported_stream_layout_notification_id(coordinator.feed_id),
+                    )
     except Exception:
         auth_retry_manager.async_shutdown()
         raise
@@ -172,5 +180,10 @@ def _notify_unsupported_stream_layout(
         "Please include this information in a "
         f"[pull request]({PULL_REQUEST_URL}).",
         title="JD Smart stream layout unsupported",
-        notification_id=f"{DOMAIN}_{coordinator.feed_id}_unsupported_stream_layout",
+        notification_id=_unsupported_stream_layout_notification_id(coordinator.feed_id),
     )
+
+
+def _unsupported_stream_layout_notification_id(feed_id: str) -> str:
+    """Return the notification ID for an unsupported stream layout."""
+    return f"{DOMAIN}_{feed_id}_unsupported_stream_layout"

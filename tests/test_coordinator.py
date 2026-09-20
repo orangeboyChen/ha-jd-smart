@@ -9,12 +9,15 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import homeassistant.util.dt as dt_util
 import pytest
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.jd_smart.api import (
     JdSmartAuthError,
+    JdSmartCannotConnectError,
     JdSmartCredentials,
+    JdSmartError,
     JdSmartSnapshot,
     JdSmartTokenRefreshError,
 )
@@ -292,3 +295,106 @@ def test_shutdown_cancels_pending_retry(hass) -> None:
         manager.async_shutdown()
 
     cancel.assert_called_once()
+
+
+async def test_network_failures_never_request_reauthentication(hass) -> None:
+    """Connectivity failures keep polling instead of stopping the coordinator.
+
+    Home Assistant stops scheduling refreshes once a coordinator raises
+    ConfigEntryAuthFailed, so a transient DNS outage must not escalate.
+    """
+    _entry, client, manager = _create_manager(hass)
+    snapshot = JdSmartSnapshot("digest", "0", True, {"power": "1"})
+    client.async_get_snapshot = AsyncMock(
+        side_effect=[JdSmartCannotConnectError("dns cannot resolve")] * 5 + [snapshot]
+    )
+    coordinator = JdSmartCoordinator(
+        hass,
+        _entry,
+        client,
+        "feed-id",
+        "Air conditioner",
+        DEVICE_TYPE_AIR_CONDITIONER,
+        manager,
+    )
+    coordinator.data = snapshot
+
+    with patch(
+        "custom_components.jd_smart.coordinator.persistent_notification.async_create"
+    ) as create_notification:
+        for _attempt in range(5):
+            with pytest.raises(UpdateFailed, match="dns cannot resolve"):
+                await coordinator._async_update_data()
+
+        assert await coordinator._async_update_data() is snapshot
+
+    create_notification.assert_not_called()
+
+
+async def test_network_failure_resets_reauthentication_counter(hass) -> None:
+    """A connectivity failure does not count toward the reauth threshold."""
+    _entry, client, manager = _create_manager(hass)
+    client.async_get_snapshot = AsyncMock(
+        side_effect=[
+            JdSmartError("unexpected status"),
+            JdSmartError("unexpected status"),
+            JdSmartCannotConnectError("dns cannot resolve"),
+            JdSmartError("unexpected status"),
+            JdSmartError("unexpected status"),
+        ]
+    )
+    coordinator = JdSmartCoordinator(
+        hass,
+        _entry,
+        client,
+        "feed-id",
+        "Air conditioner",
+        DEVICE_TYPE_AIR_CONDITIONER,
+        manager,
+    )
+    coordinator.data = JdSmartSnapshot("digest", "0", True, {"power": "1"})
+
+    with (
+        patch(
+            "custom_components.jd_smart.coordinator.async_track_point_in_utc_time",
+            return_value=Mock(),
+        ),
+        patch(
+            "custom_components.jd_smart.coordinator.persistent_notification.async_create"
+        ),
+    ):
+        for _attempt in range(5):
+            with pytest.raises(UpdateFailed):
+                await coordinator._async_update_data()
+
+        assert coordinator._consecutive_update_failures == 2
+
+        client.async_get_snapshot.side_effect = JdSmartError("unexpected status")
+        with pytest.raises(ConfigEntryAuthFailed):
+            await coordinator._async_update_data()
+
+
+async def test_shutdown_cancels_fast_polling_and_scheduled_refresh(hass) -> None:
+    """Shutting down also runs the base coordinator shutdown."""
+    _entry, _client, manager = _create_manager(hass)
+    coordinator = JdSmartCoordinator(
+        hass,
+        _entry,
+        _client,
+        "feed-id",
+        "Air conditioner",
+        DEVICE_TYPE_AIR_CONDITIONER,
+        manager,
+    )
+    fast_poll_cancel = Mock()
+
+    with patch(
+        "custom_components.jd_smart.coordinator.async_track_point_in_utc_time",
+        return_value=fast_poll_cancel,
+    ):
+        coordinator.trigger_fast_polling()
+
+    await coordinator.async_shutdown()
+
+    fast_poll_cancel.assert_called_once()
+    assert coordinator._shutdown_requested

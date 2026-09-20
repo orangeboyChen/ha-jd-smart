@@ -273,7 +273,17 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
         except JdSmartCannotConnectError as err:
             if self.data is None:
                 raise ConfigEntryNotReady from err
-            await self._async_handle_update_failure(err)
+            # Never escalate a connectivity failure to ConfigEntryAuthFailed:
+            # Home Assistant stops scheduling refreshes for a coordinator that
+            # raises it, so a transient DNS or network outage would leave the
+            # integration permanently stale until the entry is reloaded.
+            self._consecutive_update_failures = 0
+            LOGGER.warning(
+                "JD Smart could not reach the cloud; retrying: feed_id=%s, error=%s",
+                self.feed_id,
+                err,
+            )
+            raise UpdateFailed(f"Unable to reach JD Smart: {err}") from err
         except JdSmartError as err:
             await self._async_handle_update_failure(err)
         raise UpdateFailed("Unable to update JD Smart")
@@ -351,11 +361,14 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
             notification_id=f"{DOMAIN}_{self.feed_id}_reauth",
         )
 
-    def async_shutdown(self) -> None:
+    async def async_shutdown(self) -> None:
         """Cancel pending coordinator callbacks."""
         if self._fast_poll_cancel:
             self._fast_poll_cancel()
             self._fast_poll_cancel = None
+        # The base class cancels the scheduled refresh and shuts the debouncer
+        # down; overriding it without awaiting leaves those running.
+        await super().async_shutdown()
 
     @callback
     def trigger_fast_polling(self) -> None:

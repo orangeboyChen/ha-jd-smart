@@ -14,7 +14,7 @@ import time
 from typing import Any
 from urllib.parse import quote, urlencode
 
-from aiohttp import ClientError, ClientResponseError, ClientSession
+from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
 from cryptography.hazmat.primitives import hashes, padding as crypto_padding
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -55,6 +55,12 @@ WANGYIN_SEED_WRAP_KEY = bytes.fromhex(
     "1234567890ABCDEF1234567890ABCDEF"
     "1234567890ABCDEF1234567890ABCDEF"
 )
+
+# Without an explicit timeout every request inherits the aiohttp default of
+# 300 seconds (five minutes), so a stalled connection keeps the coordinator
+# refresh hanging far longer than its polling interval instead of failing
+# fast and retrying.
+REQUEST_TIMEOUT = ClientTimeout(total=30, sock_connect=10)
 
 
 class JdSmartError(Exception):
@@ -648,6 +654,7 @@ class JdSmartClient:
                     "Host": "aks.jdpay.com:80",
                     "wpe": "jdjr",
                 },
+                timeout=REQUEST_TIMEOUT,
             ) as response:
                 text = await response.text()
                 if response.status != HTTPStatus.OK:
@@ -655,7 +662,9 @@ class JdSmartClient:
                         f"Wangyin handshake HTTP status: {response.status}"
                     )
         except (ClientError, TimeoutError) as err:
-            raise JdSmartCannotConnectError("Unable to reach Wangyin handshake") from err
+            raise JdSmartCannotConnectError(
+                f"Unable to reach Wangyin handshake: {err}"
+            ) from err
 
         try:
             decoded = base64.b64decode(text)
@@ -743,7 +752,7 @@ class JdSmartClient:
         )
         try:
             async with self._session.post(
-                url, data=raw_body, headers=headers
+                url, data=raw_body, headers=headers, timeout=REQUEST_TIMEOUT
             ) as response:
                 text = await response.text()
                 LOGGER.debug(
@@ -766,8 +775,14 @@ class JdSmartClient:
                         message=text,
                         headers=response.headers,
                     )
+        except ClientResponseError as err:
+            raise JdSmartCannotConnectError(
+                f"JD Smart HTTP status: {err.status}"
+            ) from err
         except (ClientError, TimeoutError) as err:
-            raise JdSmartCannotConnectError from err
+            raise JdSmartCannotConnectError(
+                f"Unable to reach JD Smart: {err}"
+            ) from err
 
         try:
             payload = json.loads(text)
@@ -814,6 +829,7 @@ class JdSmartClient:
                     "Content-Type": "application/x-www-form-urlencoded",
                     "User-Agent": f"Android WJLoginSDK {WJLOGIN_SDK_VERSION}",
                 },
+                timeout=REQUEST_TIMEOUT,
             ) as response:
                 text = await response.text()
                 if response.status != HTTPStatus.OK:
@@ -827,7 +843,7 @@ class JdSmartClient:
                         f"WJLogin HTTP status: {response.status}"
                     )
         except (ClientError, TimeoutError) as err:
-            raise JdSmartTokenRefreshError("Unable to reach WJLogin") from err
+            raise JdSmartTokenRefreshError(f"Unable to reach WJLogin: {err}") from err
 
         packet = _wj_decrypt_msg(text, random_key)
         if packet is None:

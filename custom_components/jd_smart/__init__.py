@@ -126,7 +126,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: JdSmartConfigEntry) -> 
     if runtime_data := getattr(entry, "runtime_data", None):
         runtime_data.auth_retry_manager.async_shutdown()
         for coordinator in runtime_data.coordinators.values():
-            coordinator.async_shutdown()
+            await coordinator.async_shutdown()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

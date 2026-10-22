@@ -174,7 +174,7 @@ class JdSmartClimate(JdSmartEntity, ClimateEntity):
         """Turn on using the mode from the latest device snapshot."""
         mode = self.streams.get("mode")
         if mode not in MODE_TO_HVAC:
-            raise HomeAssistantError("The device's last HVAC mode is unavailable")
+            mode = HVAC_TO_MODE[HVACMode.AUTO]
         await self._control({"power": 1, "mode": int(mode)})
 
     async def async_turn_off(self) -> None:

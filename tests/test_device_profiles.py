@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from homeassistant.components.climate import ClimateEntityFeature
-from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.jd_smart.api import JdSmartDevice, _parse_devices
 from custom_components.jd_smart.climate import JdSmartClimate, _supported_features
@@ -194,8 +192,8 @@ async def test_climate_turn_off_sends_only_power() -> None:
     coordinator.async_control_streams.assert_awaited_once_with({"power": 0})
 
 
-async def test_climate_turn_on_rejects_missing_remote_mode() -> None:
-    """An unknown mode must not be replaced with a guessed default."""
+async def test_climate_turn_on_uses_auto_without_remote_mode() -> None:
+    """Use auto when the device snapshot has no recognized mode."""
     coordinator = MagicMock()
     coordinator.feed_id = "feed-id"
     coordinator.device_name = "Air conditioner"
@@ -203,7 +201,6 @@ async def test_climate_turn_on_rejects_missing_remote_mode() -> None:
     coordinator.async_control_streams = AsyncMock()
     climate = JdSmartClimate(coordinator)
 
-    with pytest.raises(HomeAssistantError, match="last HVAC mode is unavailable"):
-        await climate.async_turn_on()
+    await climate.async_turn_on()
 
-    coordinator.async_control_streams.assert_not_awaited()
+    coordinator.async_control_streams.assert_awaited_once_with({"power": 1, "mode": 4})

@@ -61,6 +61,8 @@ CLIMATE_SUPPORTED_FEATURES = (
     | ClimateEntityFeature.FAN_MODE
     | ClimateEntityFeature.PRESET_MODE
     | ClimateEntityFeature.SWING_MODE
+    | ClimateEntityFeature.TURN_ON
+    | ClimateEntityFeature.TURN_OFF
 )
 
 
@@ -168,6 +170,17 @@ class JdSmartClimate(JdSmartEntity, ClimateEntity):
         mode = HVAC_TO_MODE[hvac_mode]
         await self._control({"power": 1, "mode": int(mode)})
 
+    async def async_turn_on(self) -> None:
+        """Turn on using the mode from the latest device snapshot."""
+        mode = self.streams.get("mode")
+        if mode not in MODE_TO_HVAC:
+            mode = HVAC_TO_MODE[HVACMode.AUTO]
+        await self._control({"power": 1, "mode": int(mode)})
+
+    async def async_turn_off(self) -> None:
+        """Turn off without changing the device's mode."""
+        await self._control({"power": 0})
+
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set fan mode."""
         await self._control({"mark": int(FAN_TO_VALUE[fan_mode])})
@@ -194,6 +207,8 @@ def _supported_features(streams: dict[str, str] | None) -> ClimateEntityFeature:
         return CLIMATE_SUPPORTED_FEATURES
 
     features = ClimateEntityFeature.TARGET_TEMPERATURE
+    if "power" in streams:
+        features |= ClimateEntityFeature.TURN_ON | ClimateEntityFeature.TURN_OFF
     if "mark" in streams:
         features |= ClimateEntityFeature.FAN_MODE
     if "sleepmode" in streams:

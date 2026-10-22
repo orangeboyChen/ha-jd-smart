@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.climate import ClimateEntityFeature
 
 from custom_components.jd_smart.api import JdSmartDevice, _parse_devices
-from custom_components.jd_smart.climate import _supported_features
+from custom_components.jd_smart.climate import JdSmartClimate, _supported_features
 from custom_components.jd_smart.config_flow import (
     CONF_SELECTED_DEVICES,
     JdSmartAcConfigFlow,
@@ -157,4 +157,50 @@ def test_climate_features_follow_available_optional_streams() -> None:
     """Do not expose controls for unavailable climate streams."""
     features = _supported_features({"power": "1", "mode": "0", "settemp": "25"})
 
-    assert features == ClimateEntityFeature.TARGET_TEMPERATURE
+    assert features == (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
+    )
+
+
+async def test_climate_turn_on_uses_mode_from_remote_snapshot() -> None:
+    """Power on with the last mode reported by the device, even while off."""
+    coordinator = MagicMock()
+    coordinator.feed_id = "feed-id"
+    coordinator.device_name = "Air conditioner"
+    coordinator.data.streams = {"power": "0", "mode": "2", "settemp": "25"}
+    coordinator.async_control_streams = AsyncMock()
+    climate = JdSmartClimate(coordinator)
+
+    await climate.async_turn_on()
+
+    coordinator.async_control_streams.assert_awaited_once_with({"power": 1, "mode": 2})
+
+
+async def test_climate_turn_off_sends_only_power() -> None:
+    """Power off leaves the selected mode stream alone."""
+    coordinator = MagicMock()
+    coordinator.feed_id = "feed-id"
+    coordinator.device_name = "Air conditioner"
+    coordinator.data.streams = {"power": "1", "mode": "2", "settemp": "25"}
+    coordinator.async_control_streams = AsyncMock()
+    climate = JdSmartClimate(coordinator)
+
+    await climate.async_turn_off()
+
+    coordinator.async_control_streams.assert_awaited_once_with({"power": 0})
+
+
+async def test_climate_turn_on_uses_auto_without_remote_mode() -> None:
+    """Use auto when the device snapshot has no recognized mode."""
+    coordinator = MagicMock()
+    coordinator.feed_id = "feed-id"
+    coordinator.device_name = "Air conditioner"
+    coordinator.data.streams = {"power": "0", "mode": "", "settemp": "25"}
+    coordinator.async_control_streams = AsyncMock()
+    climate = JdSmartClimate(coordinator)
+
+    await climate.async_turn_on()
+
+    coordinator.async_control_streams.assert_awaited_once_with({"power": 1, "mode": 4})

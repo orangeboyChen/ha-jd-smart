@@ -124,6 +124,8 @@ The request `User-Agent` header.
 
 The climate entity supports power, HVAC mode, target temperature, current temperature, current humidity, fan speed, vertical swing, and sleep preset. The target temperature range is 18-32 C with 1 C steps.
 
+`climate.turn_on` sends power together with the mode in the latest JD Smart device snapshot. If the device does not report a recognized mode, it uses auto mode. `climate.turn_off` sends only power off.
+
 Switch entities include backlight, display, and powerful mode.
 
 The select entity controls horizontal swing direction.

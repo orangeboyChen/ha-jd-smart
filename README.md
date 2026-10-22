@@ -124,7 +124,7 @@ The request `User-Agent` header.
 
 The climate entity supports power, HVAC mode, target temperature, current temperature, current humidity, fan speed, vertical swing, and sleep preset. The target temperature range is 18-32 C with 1 C steps.
 
-`climate.turn_on` and `climate.turn_off` change only the power stream. Turning on leaves the mode stored by the device unchanged; selecting an HVAC mode explicitly changes that mode.
+`climate.turn_on` and `climate.turn_off` send only the power stream (`current_value` `"1"` or `"0"`). They do not send a mode command. Whether turning on resumes the previous mode depends on the device and has not been verified on hardware. Selecting an HVAC mode explicitly sends both power and mode.
 
 Switch entities include backlight, display, and powerful mode.
 

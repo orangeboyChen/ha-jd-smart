@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+import json
 from typing import Any
 from unittest.mock import Mock
 
@@ -89,6 +90,16 @@ def _client(session: _Session) -> JdSmartClient:
         JdSmartCredentials(cookie="cookie", tgt="tgt"),
         JdSmartDeviceProfile(device_id="device-id"),
     )
+
+
+def test_power_commands_serialize_as_jd_smart_stream_values() -> None:
+    """The control body encodes the power stream as string values."""
+    client = _client(_Session())
+
+    for value, expected in ((0, "0"), (1, "1")):
+        body = json.loads(client._control_body("feed-id", {"power": value}))
+        command = json.loads(body["json"])["command"]
+        assert command == [{"stream_id": "power", "current_value": expected}]
 
 
 async def test_snapshot_reports_dns_failure_reason() -> None:

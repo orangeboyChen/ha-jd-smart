@@ -171,11 +171,11 @@ class JdSmartClimate(JdSmartEntity, ClimateEntity):
         await self._control({"power": 1, "mode": int(mode)})
 
     async def async_turn_on(self) -> None:
-        """Power on without replacing the mode stored by the device."""
+        """Send an on command without specifying an HVAC mode."""
         await self._control({"power": 1})
 
     async def async_turn_off(self) -> None:
-        """Power off while preserving the device's selected mode."""
+        """Send an off command without specifying an HVAC mode."""
         await self._control({"power": 0})
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:

@@ -167,8 +167,8 @@ def test_climate_features_follow_available_optional_streams() -> None:
     )
 
 
-async def test_climate_power_preserves_remote_mode() -> None:
-    """Power commands must leave the JD Smart mode stream untouched."""
+async def test_climate_power_does_not_send_mode() -> None:
+    """Power commands must not include a mode stream."""
     coordinator = MagicMock()
     coordinator.feed_id = "feed-id"
     coordinator.device_name = "Air conditioner"

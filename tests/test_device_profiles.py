@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.components.climate import ClimateEntityFeature
 
 from custom_components.jd_smart.api import JdSmartDevice, _parse_devices
-from custom_components.jd_smart.climate import _supported_features
+from custom_components.jd_smart.climate import JdSmartClimate, _supported_features
 from custom_components.jd_smart.config_flow import (
     CONF_SELECTED_DEVICES,
     JdSmartAcConfigFlow,
@@ -157,4 +157,28 @@ def test_climate_features_follow_available_optional_streams() -> None:
     """Do not expose controls for unavailable climate streams."""
     features = _supported_features({"power": "1", "mode": "0", "settemp": "25"})
 
-    assert features == ClimateEntityFeature.TARGET_TEMPERATURE
+    assert features == (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
+    )
+    assert _supported_features({"mode": "0", "settemp": "25"}) == (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+    )
+
+
+async def test_climate_power_preserves_remote_mode() -> None:
+    """Power commands must leave the JD Smart mode stream untouched."""
+    coordinator = MagicMock()
+    coordinator.feed_id = "feed-id"
+    coordinator.device_name = "Air conditioner"
+    coordinator.data.streams = {"power": "0", "mode": "2", "settemp": "25"}
+    coordinator.async_control_streams = AsyncMock()
+    climate = JdSmartClimate(coordinator)
+
+    await climate.async_turn_on()
+    coordinator.async_control_streams.assert_awaited_once_with({"power": 1})
+
+    coordinator.async_control_streams.reset_mock()
+    await climate.async_turn_off()
+    coordinator.async_control_streams.assert_awaited_once_with({"power": 0})

@@ -117,6 +117,8 @@ https://api.smart.jd.com/c/service/integration/v1/getDeviceSnapshot_v1
 
 空调实体支持电源、模式、目标温度、当前温度、当前湿度、风速、上下风和睡眠模式。目标温度范围为 18-32 摄氏度，步进 1 摄氏度。
 
+`climate.turn_on` 和 `climate.turn_off` 只修改电源状态。开机时不会覆盖设备端保存的模式；明确选择空调模式时才会修改模式。
+
 开关实体包括背光灯、屏显和强力。
 
 选择实体用于左右风。

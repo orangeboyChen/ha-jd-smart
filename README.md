@@ -1,21 +1,22 @@
 # JD Smart for Home Assistant
 
-Unofficial Home Assistant custom integration for air conditioners controlled through the JD Smart / JD Xiaojia app.
+Unofficial Home Assistant custom integration for air conditioners and smart plugs controlled through the JD Smart / JD Xiaojia app.
 
-This repository packages the JD Smart air-conditioner control API as a Home Assistant custom integration. It is not affiliated with JD.com, JD Smart, JD Xiaojia, or Home Assistant.
+This repository packages the JD Smart device control API as a Home Assistant custom integration. It is not affiliated with JD.com, JD Smart, JD Xiaojia, or Home Assistant.
 
 [简体中文 README](README_zh-Hans.md)
 
 ## Purpose
 
-This repository is for users who own an air conditioner controlled through the JD Smart / JD Xiaojia app and can extract session values from a local app traffic capture. This does not mean JD-branded air conditioners only; it means air conditioners connected to JD Smart / JD Xiaojia, such as KFR 35GW style wall-mounted units.
+This repository is for users who own devices controlled through the JD Smart / JD Xiaojia app and can extract session values from a local app traffic capture. This does not mean JD-branded devices only; it means devices connected to JD Smart / JD Xiaojia, such as KFR 35GW style wall-mounted air conditioners or JD smart plugs.
 
 ## Features
 
 - Climate entity for power, HVAC mode, target temperature, fan speed, vertical swing, and sleep preset.
 - Switch entities for backlight, display, and powerful mode.
+- Smart plug support: a power switch plus a live power sensor.
 - Select entity for horizontal swing direction.
-- Sensor entities for current temperature, humidity, and diagnostic values.
+- Sensor entities for current temperature, humidity, live power (plugs), and diagnostic values.
 - Config flow UI.
 - Automatic `tgt` token refresh with backoff retries and recovery notifications.
 
@@ -120,13 +121,35 @@ The `channel` query parameter in the captured request URL, for example
 
 The request `User-Agent` header.
 
+## Support for smart plugs
+
+Smart plugs (server category `102010`) are added as two entities:
+
+- a `switch` entity that toggles the mains output;
+- a `sensor` entity showing **live power in watts**.
+
+The plug reports its switch state in the `Power` stream (`0` = off, `1` = on)
+and its instantaneous active power in the `CurrentPowerSum` stream. Despite
+the `Sum` in the name, `CurrentPowerSum` is not a running energy total: it
+fluctuates with the connected load (an idle plug reads `0`, a small load reads
+a few watts) and is reported directly in watts. Only four streams are exposed
+by these plugs (`Power`, `Mode`, `ScreenDisplay`, `CurrentPowerSum`), so no
+voltage or current entities are created.
+
+Smart plugs have no cumulative energy counter, so no `kWh` entity is created.
+
+Control commands go through the same `controlDevice_v1` endpoint as the air
+conditioner, and stream ids are matched case-insensitively because plugs use
+title-case names while air conditioners use lower case.
+
 ## Entities
 
 The climate entity supports power, HVAC mode, target temperature, current temperature, current humidity, fan speed, vertical swing, and sleep preset. The target temperature range is 18-32 C with 1 C steps.
 
 `climate.turn_on` sends power together with the mode in the latest JD Smart device snapshot. If the device does not report a recognized mode, it uses auto mode. `climate.turn_off` sends only power off.
 
-Switch entities include backlight, display, and powerful mode.
+Switch entities include backlight, display, and powerful mode for air
+conditioners, and a single power switch for smart plugs.
 
 The select entity controls horizontal swing direction.
 

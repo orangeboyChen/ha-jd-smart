@@ -136,6 +136,9 @@
             "current_humidity": {
                 "name": "Current humidity"
             },
+            "current_power": {
+                "name": "Current power"
+            },
             "current_temperature": {
                 "name": "Current temperature"
             },
@@ -161,6 +164,9 @@
             },
             "display": {
                 "name": "Display"
+            },
+            "power": {
+                "name": "Power"
             },
             "powerful": {
                 "name": "Powerful"

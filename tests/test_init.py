@@ -26,6 +26,7 @@ from custom_components.jd_smart.const import (
     CONF_FEED_ID,
     CONF_TGT,
     DEVICE_TYPE_AIR_CONDITIONER,
+    DEVICE_TYPE_SMART_PLUG,
     DOMAIN,
     PULL_REQUEST_URL,
 )
@@ -160,3 +161,230 @@ async def test_setup_clears_recovered_stream_layout_notification(hass) -> None:
         hass,
         _unsupported_stream_layout_notification_id("feed-id"),
     )
+
+
+async def test_plug_entry_setup_creates_working_switch(hass) -> None:
+    """A smart-plug entry sets up and exposes a working power switch."""
+    from custom_components.jd_smart.switch import async_setup_entry as setup_switches
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="plug-entry",
+        data={
+            CONF_COOKIE: "cookie",
+            CONF_TGT: "tgt",
+            CONF_DEVICES: [
+                {
+                    CONF_FEED_ID: "plug-feed",
+                    CONF_DEVICE_NAME: "Living room plug",
+                    CONF_DEVICE_TYPE: DEVICE_TYPE_SMART_PLUG,
+                    CONF_CATEGORY_ID: "102010",
+                    CONF_CATEGORY_NAME: "Socket",
+                }
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+    client = AsyncMock()
+    client.credentials.tgt = "tgt"
+    client.async_get_snapshot.return_value = JdSmartSnapshot(
+        "digest",
+        "1",
+        True,
+        {
+            "Power": "0",
+            "Mode": "0",
+            "ScreenDisplay": "1",
+            "CurrentPowerSum": "0",
+        },
+    )
+    client.async_control_streams.return_value = JdSmartSnapshot(
+        "digest", "1", True, {"Power": "1", "Mode": "0"}
+    )
+
+    added = []
+
+    with (
+        patch("custom_components.jd_smart.JdSmartClient", return_value=client),
+        patch("custom_components.jd_smart.persistent_notification.async_create"),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new=AsyncMock()
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+        coordinator = entry.runtime_data.coordinators["plug-feed"]
+        await setup_switches(hass, entry, lambda entities: added.extend(entities))
+
+    assert len(added) == 1
+    switch = added[0]
+    assert switch.unique_id == "plug-feed_power"
+    assert switch.entity_description.stream_id == "Power"
+    assert switch.is_on is False
+
+    with patch.object(
+        coordinator, "async_control_streams", new_callable=AsyncMock
+    ) as control:
+        await switch.async_turn_on()
+    control.assert_awaited_once_with({"Power": 1})
+
+
+def test_plug_entry_does_not_warn_about_stream_layout(hass) -> None:
+    """A plug with its Power stream is not reported as an unsupported layout."""
+    from custom_components.jd_smart import _is_unsupported_stream_layout
+    from custom_components.jd_smart.api import JdSmartSnapshot
+
+    class _Coordinator:
+        data = JdSmartSnapshot(
+            "digest",
+            "1",
+            True,
+            {"Power": "0", "Mode": "0", "ScreenDisplay": "1", "CurrentPowerSum": "0"},
+        )
+
+    device = {CONF_DEVICE_TYPE: DEVICE_TYPE_SMART_PLUG}
+    assert not _is_unsupported_stream_layout(device, _Coordinator())
+
+    broken = _Coordinator()
+    broken.data = JdSmartSnapshot("digest", "1", True, {"Mode": "0"})
+    assert _is_unsupported_stream_layout(device, broken)
+
+
+async def test_plug_entry_creates_switch_and_power_sensor(hass) -> None:
+    """A plug entry exposes exactly one switch and one power sensor."""
+    from custom_components.jd_smart.sensor import async_setup_entry as setup_sensors
+    from custom_components.jd_smart.switch import async_setup_entry as setup_switches
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="plug-entry-2",
+        data={
+            CONF_COOKIE: "cookie",
+            CONF_TGT: "tgt",
+            CONF_DEVICES: [
+                {
+                    CONF_FEED_ID: "plug-feed",
+                    CONF_DEVICE_NAME: "Living room plug",
+                    CONF_DEVICE_TYPE: DEVICE_TYPE_SMART_PLUG,
+                    CONF_CATEGORY_ID: "102010",
+                    CONF_CATEGORY_NAME: "Socket",
+                }
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+    client = AsyncMock()
+    client.credentials.tgt = "tgt"
+    client.async_get_snapshot.return_value = JdSmartSnapshot(
+        "digest",
+        "1",
+        True,
+        {"Power": "1", "Mode": "0", "ScreenDisplay": "1", "CurrentPowerSum": "3"},
+    )
+
+    switches, sensors = [], []
+    with (
+        patch("custom_components.jd_smart.JdSmartClient", return_value=client),
+        patch("custom_components.jd_smart.persistent_notification.async_create"),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new=AsyncMock()
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+        await setup_switches(hass, entry, lambda e: switches.extend(e))
+        await setup_sensors(hass, entry, lambda e: sensors.extend(e))
+
+    assert len(switches) == 1
+    assert len(sensors) == 1
+    switch, sensor = switches[0], sensors[0]
+
+    assert switch.unique_id == "plug-feed_power"
+    assert sensor.unique_id == "plug-feed_current_power"
+    assert switch.unique_id != sensor.unique_id
+
+    assert switch.is_on is True
+    assert sensor.native_value == 3.0
+    assert sensor.entity_description.native_unit_of_measurement == "W"
+
+
+async def test_plug_entry_skips_power_sensor_without_stream(hass) -> None:
+    """Do not create a power sensor when the plug does not report the stream."""
+    from custom_components.jd_smart.sensor import async_setup_entry as setup_sensors
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="plug-entry-3",
+        data={
+            CONF_COOKIE: "cookie",
+            CONF_TGT: "tgt",
+            CONF_DEVICES: [
+                {
+                    CONF_FEED_ID: "plug-feed",
+                    CONF_DEVICE_NAME: "Basic plug",
+                    CONF_DEVICE_TYPE: DEVICE_TYPE_SMART_PLUG,
+                }
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+    client = AsyncMock()
+    client.credentials.tgt = "tgt"
+    client.async_get_snapshot.return_value = JdSmartSnapshot(
+        "digest", "1", True, {"Power": "0"}
+    )
+
+    sensors = []
+    with (
+        patch("custom_components.jd_smart.JdSmartClient", return_value=client),
+        patch("custom_components.jd_smart.persistent_notification.async_create"),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new=AsyncMock()
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+        await setup_sensors(hass, entry, lambda e: sensors.extend(e))
+
+    assert sensors == []
+
+
+async def test_air_conditioner_gets_no_plug_power_sensor(hass) -> None:
+    """The plug power sensor must not leak onto air conditioners."""
+    from custom_components.jd_smart.sensor import async_setup_entry as setup_sensors
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        entry_id="ac-entry",
+        data={
+            CONF_COOKIE: "cookie",
+            CONF_TGT: "tgt",
+            CONF_DEVICES: [
+                {
+                    CONF_FEED_ID: "ac-feed",
+                    CONF_DEVICE_NAME: "AC",
+                    CONF_DEVICE_TYPE: DEVICE_TYPE_AIR_CONDITIONER,
+                }
+            ],
+        },
+    )
+    entry.add_to_hass(hass)
+    client = AsyncMock()
+    client.credentials.tgt = "tgt"
+    client.async_get_snapshot.return_value = JdSmartSnapshot(
+        "digest",
+        "0",
+        True,
+        {"power": "1", "mode": "0", "settemp": "25", "CurrentPowerSum": "3"},
+    )
+
+    sensors = []
+    with (
+        patch("custom_components.jd_smart.JdSmartClient", return_value=client),
+        patch("custom_components.jd_smart.persistent_notification.async_create"),
+        patch.object(
+            hass.config_entries, "async_forward_entry_setups", new=AsyncMock()
+        ),
+    ):
+        assert await async_setup_entry(hass, entry)
+        await setup_sensors(hass, entry, lambda e: sensors.extend(e))
+
+    keys = {entity.unique_id for entity in sensors}
+    assert "ac-feed_current_power" not in keys

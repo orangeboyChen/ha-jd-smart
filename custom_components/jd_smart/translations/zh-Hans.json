@@ -136,6 +136,9 @@
             "current_humidity": {
                 "name": "当前湿度"
             },
+            "current_power": {
+                "name": "当前功率"
+            },
             "current_temperature": {
                 "name": "当前温度"
             },
@@ -161,6 +164,9 @@
             },
             "display": {
                 "name": "屏显"
+            },
+            "power": {
+                "name": "电源"
             },
             "powerful": {
                 "name": "强力"

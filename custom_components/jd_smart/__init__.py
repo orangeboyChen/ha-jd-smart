@@ -10,7 +10,6 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import JdSmartClient, JdSmartCredentials, JdSmartDeviceProfile
 from .const import (
-    AIR_CONDITIONER_REQUIRED_STREAMS,
     CONF_APP_VERSION,
     CONF_CATEGORY_ID,
     CONF_CATEGORY_NAME,
@@ -39,6 +38,8 @@ from .const import (
     DEVICE_TYPE_AIR_CONDITIONER,
     DOMAIN,
     PULL_REQUEST_URL,
+    REQUIRED_STREAMS_BY_DEVICE_TYPE,
+    has_required_streams,
 )
 from .coordinator import (
     JdSmartAuthRetryManager,
@@ -154,12 +155,11 @@ def _is_unsupported_stream_layout(
     device: dict[str, str], coordinator: JdSmartCoordinator
 ) -> bool:
     """Return whether a recognized device has no usable entity handler."""
-    return (
-        device.get(CONF_DEVICE_TYPE, DEVICE_TYPE_AIR_CONDITIONER)
-        == DEVICE_TYPE_AIR_CONDITIONER
-        and coordinator.data is not None
-        and not AIR_CONDITIONER_REQUIRED_STREAMS <= coordinator.data.streams.keys()
-    )
+    device_type = device.get(CONF_DEVICE_TYPE, DEVICE_TYPE_AIR_CONDITIONER)
+    required = REQUIRED_STREAMS_BY_DEVICE_TYPE.get(device_type)
+    if required is None or coordinator.data is None:
+        return False
+    return not has_required_streams(coordinator.data.streams, required)
 
 
 def _notify_unsupported_stream_layout(

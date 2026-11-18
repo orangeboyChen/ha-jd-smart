@@ -9,10 +9,11 @@ from http import HTTPStatus
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 from aiohttp import ClientError, ClientResponseError, ClientSession, ClientTimeout
 from cryptography.hazmat.primitives import hashes, padding as crypto_padding
@@ -127,8 +128,9 @@ class JdSmartSnapshot:
             item["stream_id"]: str(item.get("current_value", ""))
             for item in data.get("streams", [])
         }
+        # An unchanged digest comes back as ``"digest": null`` with no streams.
         return cls(
-            digest=str(data.get("digest", "")),
+            digest=str(data.get("digest") or ""),
             status=str(data.get("status", "")),
             from_device_success=bool(data.get("fromDeviceSuccess", False)),
             streams=streams,
@@ -156,6 +158,89 @@ class _WangyinSession:
 
     context: bytes
     data_key: bytes
+
+
+_CURL_HEADER_PATTERN = re.compile(
+    r"""-H\s+(?P<quote>['"])(?P<header>.*?)(?P=quote)""",
+    re.DOTALL,
+)
+_CURL_URL_PATTERN = re.compile(
+    r"""(?P<quote>['"])(?P<url>https?://[^'"\s]+)(?P=quote)""",
+)
+_HEADER_NAME_MAP = {
+    "tgt": "tgt",
+    "cookie": "cookie",
+    "sgm-context": "sgm_context",
+    "user-agent": "user_agent",
+    "appplatform": "device_model",
+    "appplatformversion": "platform_version",
+    "appversion": "app_version",
+}
+_QUERY_NAME_MAP = {
+    "plat": "platform",
+    "app_version": "app_version",
+    "hard_platform": "device_model",
+    "plat_version": "platform_version",
+    "device_id": "device_id",
+    "channel": "channel",
+}
+
+
+def cookie_value(cookie: str, name: str) -> str | None:
+    """Return one cookie value by name, or None when absent."""
+    for key, value in _parse_cookie(cookie):
+        if key.lower() == name.lower():
+            return value.strip() or None
+    return None
+
+
+def parse_curl_command(text: str) -> dict[str, str]:
+    """Extract JD Smart credentials from a pasted ``curl`` command.
+
+    Only the values the integration stores are returned, so the pasted command
+    may contain any extra headers or flags. ``Authorization`` carries no stored
+    value because it is recomputed for every request, but its presence is
+    validated implicitly by requiring the captured ``tgt``.
+    """
+    if not text or not text.strip():
+        raise ValueError("No curl command provided")
+
+    found: dict[str, str] = {}
+
+    for match in _CURL_HEADER_PATTERN.finditer(text):
+        header = match.group("header")
+        name, separator, value = header.partition(":")
+        if not separator:
+            continue
+        key = _HEADER_NAME_MAP.get(name.strip().lower())
+        if key is not None and value.strip():
+            found[key] = value.strip()
+
+    url_match = _CURL_URL_PATTERN.search(text)
+    if url_match:
+        query = parse_qs(urlparse(url_match.group("url")).query)
+        for query_name, key in _QUERY_NAME_MAP.items():
+            values = query.get(query_name)
+            if values and values[0].strip():
+                found[key] = values[0].strip()
+
+    # The WJLogin refresh endpoint requires the account pin, which the app
+    # sends as the ``pt_pin`` cookie. Deriving it saves the user from typing it
+    # and prevents the "pin not match" failure on the first token refresh.
+    if found.get("cookie") and not found.get("pin"):
+        pin = cookie_value(found["cookie"], "pt_pin")
+        if pin:
+            found["pin"] = unquote(pin)
+
+    missing = [name for name in ("cookie", "tgt") if not found.get(name)]
+    if missing:
+        raise ValueError(
+            "Could not find "
+            + " and ".join(missing)
+            + " in the pasted curl command; copy the full request including "
+            "the Cookie and tgt headers"
+        )
+    return found
 
 
 def _json_dumps(data: Any) -> str:

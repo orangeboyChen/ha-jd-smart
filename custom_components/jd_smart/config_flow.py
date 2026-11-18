@@ -13,6 +13,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
+    parse_curl_command,
     JdSmartAuthError,
     JdSmartCannotConnectError,
     JdSmartClient,
@@ -29,6 +30,7 @@ from .const import (
     CONF_CHANNEL,
     CONF_COOKIE,
     CONF_CONFIG_TYPE,
+    CONF_CURL,
     CONF_DEVICE_ID,
     CONF_DEVICE_MODEL,
     CONF_DEVICE_NAME,
@@ -100,8 +102,13 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     defaults = defaults or {}
     return vol.Schema(
         {
-            vol.Required(CONF_COOKIE, default=defaults.get(CONF_COOKIE, "")): str,
-            vol.Required(CONF_TGT, default=defaults.get(CONF_TGT, "")): str,
+            vol.Optional(
+                CONF_CURL, default=defaults.get(CONF_CURL, "")
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(multiline=True)
+            ),
+            vol.Optional(CONF_COOKIE, default=defaults.get(CONF_COOKIE, "")): str,
+            vol.Optional(CONF_TGT, default=defaults.get(CONF_TGT, "")): str,
             vol.Optional(CONF_PIN, default=defaults.get(CONF_PIN, "")): str,
             vol.Optional(
                 CONF_SGM_CONTEXT, default=defaults.get(CONF_SGM_CONTEXT, "")
@@ -131,6 +138,39 @@ def _schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
             ): str,
         }
     )
+
+
+CURL_ONLY_FIELDS = (
+    CONF_CURL,
+)
+
+
+def _apply_curl(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Merge fields parsed from a pasted curl command into the form input.
+
+    Explicitly filled form fields win over values parsed from the curl command
+    so a user can paste a capture and then correct a single value. Raises
+    ValueError when the pasted text is unusable.
+    """
+    curl_text = str(user_input.get(CONF_CURL) or "").strip()
+    data = {key: value for key, value in user_input.items() if key != CONF_CURL}
+    if not curl_text:
+        return data
+
+    parsed = parse_curl_command(curl_text)
+    for key, value in parsed.items():
+        if not data.get(key):
+            data[key] = value
+    return data
+
+
+def _require_auth_fields(data: dict[str, Any]) -> None:
+    """Raise ValueError when merged input still lacks a required field."""
+    missing = [key for key in (CONF_COOKIE, CONF_TGT) if not data.get(key)]
+    if missing:
+        raise ValueError(
+            "Fill in " + " and ".join(missing) + ", or paste a full curl command"
+        )
 
 
 def _clean_input(user_input: dict[str, Any]) -> dict[str, Any]:
@@ -267,7 +307,16 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle manual authentication input."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            data = _clean_input(user_input)
+            try:
+                data = _clean_input(_apply_curl(user_input))
+                _require_auth_fields(data)
+            except ValueError as err:
+                LOGGER.info("JD Smart curl parse failed: %s", err)
+                return self.async_show_form(
+                    step_id="user",
+                    data_schema=_schema(user_input),
+                    errors={"base": "invalid_curl"},
+                )
             try:
                 await _refresh_auth(self.hass, data)
                 devices = await _fetch_devices(self.hass, data)
@@ -460,7 +509,15 @@ class JdSmartAcConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reauth_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
-            data = {**entry.data, **_clean_input(user_input)}
+            try:
+                data = {**entry.data, **_clean_input(_apply_curl(user_input))}
+            except ValueError as err:
+                LOGGER.info("JD Smart curl parse failed during reauth: %s", err)
+                return self.async_show_form(
+                    step_id="reauth_confirm",
+                    data_schema=_schema({**entry.data, **user_input}),
+                    errors={"base": "invalid_curl"},
+                )
             try:
                 await _refresh_auth(self.hass, data)
             except JdSmartTokenRefreshError:

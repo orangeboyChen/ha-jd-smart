@@ -121,6 +121,19 @@ The `channel` query parameter in the captured request URL, for example
 
 The request `User-Agent` header.
 
+## Easiest setup: paste the curl command
+
+Instead of copying every field by hand you can paste the whole request from
+your app capture into the `curl` box at the top of the form. The integration
+parses it and fills in `Cookie`, `tgt`, `Sgm-Context`, `User-Agent`, `platform`,
+`app_version`, `device_model`, `platform_version`, `device_id` and `channel`.
+The account PIN is taken from the `pt_pin` cookie, which the token refresh
+requires.
+
+Fields you type manually always win over values found in the pasted command,
+so you can paste a capture and then correct a single value. If the text cannot
+be parsed the form shows an error and keeps your input.
+
 ## Support for smart plugs
 
 Smart plugs (server category `102010`) are added as two entities:

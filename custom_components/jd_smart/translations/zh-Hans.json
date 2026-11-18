@@ -4,11 +4,12 @@
             "already_configured": "设备已经配置",
             "auth_refreshed": "京东小家鉴权信息刷新成功。",
             "auth_updated": "京东小家鉴权信息更新成功。",
-            "no_devices": "没有发现新的空调设备。已配置的设备会被隐藏。"
+            "no_devices": "未发现新的设备。已配置的设备会被隐藏。"
         },
         "error": {
             "cannot_connect": "连接失败",
             "invalid_auth": "认证无效",
+            "invalid_curl": "无法解析 curl 命令。请粘贴包含 Cookie 与 tgt 请求头的完整请求，或改为手动逐项填写。",
             "unsupported_device": "暂不支持此设备类型。通知中包含提交 Pull Request 的链接。",
             "token_refresh_failed": "鉴权刷新失败。请查看通知中的详细原因，或手动填写新的鉴权信息。",
             "unknown": "未知错误"
@@ -38,6 +39,7 @@
             },
             "user": {
                 "data": {
+                    "curl": "粘贴 curl 命令（可选）",
                     "app_version": "应用版本",
                     "channel": "渠道",
                     "cookie": "Cookie",
@@ -51,6 +53,7 @@
                     "user_agent": "User-Agent"
                 },
                 "data_description": {
+                    "curl": "直接粘贴京东小家 App 的完整 curl 请求，会自动填好 Cookie、tgt、Sgm-Context、User-Agent 以及平台相关参数。已手动填写的项目优先保留。",
                     "app_version": "可用抓包中的应用版本。",
                     "channel": "可用抓包中的请求渠道。",
                     "cookie": "从京东小家 App 抓包复制的 Cookie。",
@@ -69,7 +72,7 @@
                 "data": {
                     "selected_devices": "设备"
                 },
-                "description": "选择一个或多个要添加的空调设备。已配置的设备会被隐藏。"
+                "description": "选择一个或多个要添加的设备（空调或智能插座）。已配置的设备会被隐藏。"
             }
         }
     },

@@ -246,7 +246,7 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
         digest = self.data.digest if self.data else ""
         failed_tgt = self.client.credentials.tgt
         try:
-            snapshot = await self.client.async_get_snapshot(self.feed_id, digest)
+            snapshot = await self._async_fetch_snapshot(digest)
             self._consecutive_update_failures = 0
             self.auth_retry_manager.async_mark_recovered()
             return snapshot
@@ -260,7 +260,7 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
                     "JD Smart authentication refresh is scheduled"
                 ) from err
             try:
-                snapshot = await self.client.async_get_snapshot(self.feed_id, digest)
+                snapshot = await self._async_fetch_snapshot(digest)
             except JdSmartError as retry_err:
                 self.auth_retry_manager.async_schedule_failure(retry_err)
                 self.auth_retry_pending = True
@@ -287,6 +287,44 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
         except JdSmartError as err:
             await self._async_handle_update_failure(err)
         raise UpdateFailed("Unable to update JD Smart")
+
+    async def _async_fetch_snapshot(self, digest: str) -> JdSmartSnapshot:
+        """Fetch a snapshot without discarding state on "unchanged" replies.
+
+        JD Smart treats ``digest`` as a state fingerprint: when it matches the
+        device's current state the reply carries ``digest: null`` and an empty
+        ``streams`` list meaning "nothing changed" - it is NOT a snapshot with
+        no values. Replacing the coordinator data with that empty reply made
+        every switch and sensor flip to unknown right after a control command,
+        because the first follow-up poll always used the digest returned by the
+        control response. Keep the previous values and digest in that case.
+        """
+        previous = self.data
+        snapshot = await self.client.async_get_snapshot(self.feed_id, digest)
+
+        if not snapshot.streams:
+            if previous is not None and previous.streams:
+                LOGGER.debug(
+                    "JD Smart reported no stream changes; keeping last snapshot: "
+                    "feed_id=%s",
+                    self.feed_id,
+                )
+                return previous
+            # Nothing cached yet, so re-request the full state without a digest.
+            if digest:
+                snapshot = await self.client.async_get_snapshot(self.feed_id, "")
+
+        if not snapshot.digest:
+            # Keep a usable fingerprint so the next poll can stay incremental.
+            carried = (previous.digest if previous else "") or digest
+            if carried and carried != snapshot.digest:
+                snapshot = JdSmartSnapshot(
+                    digest=carried,
+                    status=snapshot.status,
+                    from_device_success=snapshot.from_device_success,
+                    streams=snapshot.streams,
+                )
+        return snapshot
 
     async def async_control_streams(self, commands: dict[str, object]) -> None:
         """Control streams and refresh state."""
@@ -330,7 +368,17 @@ class JdSmartCoordinator(DataUpdateCoordinator[JdSmartSnapshot]):
             )
             raise UpdateFailed("Unable to control JD Smart") from err
         if snapshot is not None:
-            self.async_set_updated_data(snapshot)
+            if snapshot.streams:
+                if not snapshot.digest and self.data is not None:
+                    snapshot = JdSmartSnapshot(
+                        digest=self.data.digest,
+                        status=snapshot.status,
+                        from_device_success=snapshot.from_device_success,
+                        streams=snapshot.streams,
+                    )
+                self.async_set_updated_data(snapshot)
+            elif self.data is None:
+                self.async_set_updated_data(snapshot)
         self.trigger_fast_polling()
         await self.async_request_refresh()
 

@@ -114,6 +114,17 @@ https://api.smart.jd.com/c/service/integration/v1/getDeviceSnapshot_v1
 
 请求中的 `User-Agent`。
 
+## 最省事的配置方式：直接粘贴 curl 命令
+
+不必逐项抄写，表单顶部的 `curl` 输入框可以直接粘贴 App 抓包得到的整条请求。
+集成会自动解析并填入 `Cookie`、`tgt`、`Sgm-Context`、`User-Agent`、
+`platform`、`app_version`、`device_model`、`platform_version`、`device_id`
+和 `channel`。账号 PIN 会从 Cookie 里的 `pt_pin` 自动提取，
+因为刷新 token 时必须用到它。
+
+手动填写的字段优先级高于 curl 中的值，因此可以先粘贴再单独修正某一项。
+若文本无法解析，表单会提示错误并保留你已输入的内容。
+
 ## 智能插座支持
 
 智能插座（服务端 `category_id` 为 `102010`）会创建两个实体：

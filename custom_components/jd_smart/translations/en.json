@@ -4,11 +4,12 @@
             "already_configured": "Device is already configured",
             "auth_refreshed": "JD Smart authentication was refreshed successfully.",
             "auth_updated": "JD Smart authentication was updated successfully.",
-            "no_devices": "No new air conditioners were found. Already configured devices are hidden."
+            "no_devices": "No new devices were found. Already configured devices are hidden."
         },
         "error": {
             "cannot_connect": "Failed to connect",
             "invalid_auth": "Invalid authentication",
+            "invalid_curl": "Could not parse the curl command. Paste the full request including the Cookie and tgt headers, or fill the fields manually.",
             "unsupported_device": "This device type is not supported. A notification includes a link for submitting a pull request.",
             "token_refresh_failed": "Authentication refresh failed. Check the notification for details or enter new authentication data manually.",
             "unknown": "Unexpected error"
@@ -38,6 +39,7 @@
             },
             "user": {
                 "data": {
+                    "curl": "Paste curl command (optional)",
                     "app_version": "App version",
                     "channel": "Channel",
                     "cookie": "Cookie",
@@ -51,6 +53,7 @@
                     "user_agent": "User-Agent"
                 },
                 "data_description": {
+                    "curl": "Paste the whole JD Smart app curl request. Cookie, tgt, Sgm-Context, User-Agent and the platform values are filled in automatically. Explicitly entered fields take precedence.",
                     "app_version": "App version from the working capture.",
                     "channel": "Request channel from the working capture.",
                     "cookie": "Cookie copied from the JD Smart app capture.",
@@ -69,7 +72,7 @@
                 "data": {
                     "selected_devices": "Devices"
                 },
-                "description": "Select one or more air conditioners to add. Already configured devices are hidden."
+                "description": "Select one or more devices to add (air conditioners and smart plugs). Already configured devices are hidden."
             }
         }
     },

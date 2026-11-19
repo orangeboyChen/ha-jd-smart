@@ -1,21 +1,22 @@
 # 京东小家 for Home Assistant
 
-这是一个非官方 Home Assistant 自定义集成，用于接入京东小家 App 中的空调设备。
+这是一个非官方 Home Assistant 自定义集成，用于接入京东小家 App 中的空调与智能插座设备。
 
-本仓库的目标是把京东小家空调控制 API 封装成 Home Assistant custom integration。它不隶属于京东、京东小家或 Home Assistant。
+本仓库的目标是把京东小家设备控制 API 封装成 Home Assistant custom integration。它不隶属于京东、京东小家或 Home Assistant。
 
 [English README](README.md)
 
 ## 用途
 
-这个仓库适合已经拥有通过京东小家操控的空调，并且可以从 App 本地抓包中提取会话信息的用户。这里的空调不是指京东品牌空调，而是指接入京东小家的空调设备，例如 KFR 35GW 这类壁挂式空调。
+这个仓库适合已经拥有通过京东小家操控的设备，并且可以从 App 本地抓包中提取会话信息的用户。这里不限定京东品牌，而是指接入京东小家的设备，例如 KFR 35GW 这类壁挂式空调，或京东智能插座。
 
 ## 功能
 
 - 空调实体：开关、模式、目标温度、风速、上下风、睡眠模式。
 - 开关实体：背光灯、屏显、强力。
 - 选择实体：左右风。
-- 传感器：当前温度、当前湿度和若干诊断值。
+- 传感器：当前温度、当前湿度、实时功率（插座）和若干诊断值。
+- 智能插座：电源开关实体 + 实时功率传感器。
 - 支持 UI 配置流程。
 - 支持 `tgt` token 自动刷新、退避重试和恢复通知。
 
@@ -112,6 +113,36 @@ https://api.smart.jd.com/c/service/integration/v1/getDeviceSnapshot_v1
 `user_agent`
 
 请求中的 `User-Agent`。
+
+## 最省事的配置方式：直接粘贴 curl 命令
+
+不必逐项抄写，表单顶部的 `curl` 输入框可以直接粘贴 App 抓包得到的整条请求。
+集成会自动解析并填入 `Cookie`、`tgt`、`Sgm-Context`、`User-Agent`、
+`platform`、`app_version`、`device_model`、`platform_version`、`device_id`
+和 `channel`。账号 PIN 会从 Cookie 里的 `pt_pin` 自动提取，
+因为刷新 token 时必须用到它。
+
+手动填写的字段优先级高于 curl 中的值，因此可以先粘贴再单独修正某一项。
+若文本无法解析，表单会提示错误并保留你已输入的内容。
+
+## 智能插座支持
+
+智能插座（服务端 `category_id` 为 `102010`）会创建两个实体：
+
+- `switch` 实体：控制插座通断电；
+- `sensor` 实体：显示**实时功率（单位 W）**。
+
+插座用 `Power` 流上报开关状态（`0` 关、`1` 开），用 `CurrentPowerSum`
+流上报瞬时有功功率。虽然名字里带 `Sum`，`CurrentPowerSum`
+**不是累计电量**：它会随负载波动（空载为 `0`，接小功率用电器时为几瓦），
+且数值本身就以瓦为单位。这类插座只上报 4 个流
+（`Power`、`Mode`、`ScreenDisplay`、`CurrentPowerSum`），
+因此不会创建电压或电流实体。
+
+插座没有累计电量流，所以不会创建 `kWh` 电量实体。
+
+控制命令与空调走同一个 `controlDevice_v1` 接口；流量名匹配不区分大小写，
+因为插座用首字母大写（`Power`），而空调用小写（`power`）。
 
 ## 实体
 

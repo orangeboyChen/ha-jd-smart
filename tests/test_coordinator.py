@@ -398,3 +398,124 @@ async def test_shutdown_cancels_fast_polling_and_scheduled_refresh(hass) -> None
 
     fast_poll_cancel.assert_called_once()
     assert coordinator._shutdown_requested
+
+
+async def test_unchanged_digest_keeps_previous_streams(hass) -> None:
+    """An "unchanged" reply must not blank out every entity.
+
+    JD Smart answers a poll whose digest matches the device state with
+    ``digest: null`` and an empty streams list. Treating that as a real
+    snapshot made switches and power sensors flip to unknown.
+    """
+    entry, client, manager = _create_manager(hass)
+    coordinator = JdSmartCoordinator(
+        hass,
+        entry,
+        client,
+        "plug-feed",
+        "Plug",
+        "smart_plug",
+        manager,
+    )
+    good = JdSmartSnapshot(
+        "-1017686694", "1", False, {"Power": "1", "CurrentPowerSum": "3"}
+    )
+    unchanged = JdSmartSnapshot("", "1", False, {})
+    client.async_get_snapshot = AsyncMock(side_effect=[good, unchanged])
+
+    first = await coordinator._async_fetch_snapshot("")
+    assert first.streams == {"Power": "1", "CurrentPowerSum": "3"}
+
+    coordinator.data = first
+    second = await coordinator._async_fetch_snapshot(first.digest)
+
+    assert second.streams == {"Power": "1", "CurrentPowerSum": "3"}
+    assert second.digest == "-1017686694"
+
+
+async def test_unchanged_digest_refetches_when_nothing_cached(hass) -> None:
+    """Without cached state, retry the poll without a digest."""
+    entry, client, manager = _create_manager(hass)
+    coordinator = JdSmartCoordinator(
+        hass, entry, client, "plug-feed", "Plug", "smart_plug", manager
+    )
+    unchanged = JdSmartSnapshot("", "1", False, {})
+    full = JdSmartSnapshot("-2", "1", False, {"Power": "0"})
+    client.async_get_snapshot = AsyncMock(side_effect=[unchanged, full])
+
+    result = await coordinator._async_fetch_snapshot("-2")
+
+    assert result.streams == {"Power": "0"}
+    assert client.async_get_snapshot.await_args_list[-1].args[1] == ""
+
+
+async def test_snapshot_digest_null_parses_as_empty_string() -> None:
+    """``digest: null`` (unchanged) must not become the string "None"."""
+    snapshot = JdSmartSnapshot.from_result(
+        '{"digest": null, "status": "1", "streams": []}'
+    )
+    assert snapshot.digest == ""
+    assert snapshot.streams == {}
+
+
+async def test_control_result_without_streams_keeps_state(hass) -> None:
+    """A control reply with no streams must not wipe the coordinator data."""
+    entry, client, manager = _create_manager(hass)
+    coordinator = JdSmartCoordinator(
+        hass, entry, client, "plug-feed", "Plug", "smart_plug", manager
+    )
+    existing = JdSmartSnapshot("-5", "1", False, {"Power": "1"})
+    coordinator.data = existing
+    client.async_control_streams = AsyncMock(return_value=None)
+    client.async_get_snapshot = AsyncMock(
+        return_value=JdSmartSnapshot("", "1", False, {})
+    )
+
+    try:
+        await coordinator.async_control_streams({"Power": 1})
+        assert coordinator.data.streams == {"Power": "1"}
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_control_gives_user_a_clear_error_when_retries_exhaust(hass) -> None:
+    """A persistent decrypt failure still surfaces as UpdateFailed, not a hang."""
+    from custom_components.jd_smart.api import JdSmartDecryptError
+
+    entry, client, manager = _create_manager(hass)
+    coordinator = JdSmartCoordinator(
+        hass, entry, client, "plug-feed", "Plug", "smart_plug", manager
+    )
+    coordinator.data = JdSmartSnapshot("-1", "1", False, {"Power": "0"})
+    client.async_control_streams = AsyncMock(
+        side_effect=JdSmartDecryptError("Wangyin decrypt failed after 5 attempts")
+    )
+
+    try:
+        with pytest.raises(UpdateFailed):
+            await coordinator.async_control_streams({"Power": 1})
+        assert coordinator.data.streams == {"Power": "0"}, "state must be preserved"
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_control_transient_failure_is_absorbed_by_client_retry(hass) -> None:
+    """The client's internal retry means the coordinator never sees a blip."""
+    entry, client, manager = _create_manager(hass)
+    coordinator = JdSmartCoordinator(
+        hass, entry, client, "plug-feed", "Plug", "smart_plug", manager
+    )
+    coordinator.data = JdSmartSnapshot("-1", "1", False, {"Power": "0"})
+    client.async_control_streams = AsyncMock(
+        return_value=JdSmartSnapshot("-2", "1", False, {"Power": "1"})
+    )
+    client.async_get_snapshot = AsyncMock(
+        return_value=JdSmartSnapshot("-2", "1", False, {"Power": "1"})
+    )
+
+    try:
+        await coordinator.async_control_streams({"Power": 1})
+        assert coordinator.data.streams == {"Power": "1"}
+        assert client.async_control_streams.await_count == 1
+    finally:
+        await coordinator.async_shutdown()

@@ -15,7 +15,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import JdSmartConfigEntry
-from .const import AIR_CONDITIONER_REQUIRED_STREAMS, DEVICE_TYPE_AIR_CONDITIONER
+from .const import (
+    AIR_CONDITIONER_REQUIRED_STREAMS,
+    DEVICE_TYPE_AIR_CONDITIONER,
+    has_required_streams,
+)
 from .entity import JdSmartEntity
 
 MODE_TO_HVAC = {
@@ -78,7 +82,9 @@ async def async_setup_entry(
         if coordinator.device_type == DEVICE_TYPE_AIR_CONDITIONER
         if (
             coordinator.data is None
-            or AIR_CONDITIONER_REQUIRED_STREAMS <= coordinator.data.streams.keys()
+            or has_required_streams(
+                coordinator.data.streams, AIR_CONDITIONER_REQUIRED_STREAMS
+            )
         )
     )
 

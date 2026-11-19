@@ -11,7 +11,11 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import JdSmartConfigEntry
-from .const import DEVICE_TYPE_AIR_CONDITIONER
+from .const import (
+    DEVICE_TYPE_AIR_CONDITIONER,
+    DEVICE_TYPE_SMART_PLUG,
+    resolve_stream_id,
+)
 from .entity import JdSmartEntity
 
 
@@ -34,6 +38,15 @@ SWITCHES: tuple[JdSmartSwitchDescription, ...] = (
     ),
 )
 
+# Smart plugs expose a single binary mains switch. The appliance reports it as
+# ``Power`` (title case) while air conditioners use lowercase ``power``, so the
+# plug description carries the exact stream id seen in its snapshot.
+PLUG_SWITCHES: tuple[JdSmartSwitchDescription, ...] = (
+    JdSmartSwitchDescription(
+        key="power", stream_id="Power", translation_key="power"
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -41,16 +54,22 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up JD Smart switches."""
-    async_add_entities(
-        JdSmartSwitch(coordinator, description)
-        for coordinator in entry.runtime_data.coordinators.values()
-        if coordinator.device_type == DEVICE_TYPE_AIR_CONDITIONER
-        for description in SWITCHES
-        if (
-            coordinator.data is None
-            or description.stream_id in coordinator.data.streams
+    entities: list[JdSmartSwitch] = []
+    for coordinator in entry.runtime_data.coordinators.values():
+        if coordinator.device_type == DEVICE_TYPE_AIR_CONDITIONER:
+            descriptions = SWITCHES
+        elif coordinator.device_type == DEVICE_TYPE_SMART_PLUG:
+            descriptions = PLUG_SWITCHES
+        else:
+            continue
+        streams = coordinator.data.streams if coordinator.data else None
+        entities.extend(
+            JdSmartSwitch(coordinator, description)
+            for description in descriptions
+            if streams is None
+            or resolve_stream_id(streams, description.stream_id) is not None
         )
-    )
+    async_add_entities(entities)
 
 
 class JdSmartSwitch(JdSmartEntity, SwitchEntity):
@@ -69,10 +88,18 @@ class JdSmartSwitch(JdSmartEntity, SwitchEntity):
         self._attr_translation_key = description.translation_key
 
     @property
+    def _stream_id(self) -> str:
+        """Return the snapshot stream id, matching case-insensitively."""
+        return (
+            resolve_stream_id(self.streams, self.entity_description.stream_id)
+            or self.entity_description.stream_id
+        )
+
+    @property
     def is_on(self) -> bool | None:
         """Return switch state."""
-        value = self.streams.get(self.entity_description.stream_id)
-        if value == "":
+        value = self.streams.get(self._stream_id)
+        if value in (None, ""):
             return None
         return value == "1"
 
@@ -87,8 +114,7 @@ class JdSmartSwitch(JdSmartEntity, SwitchEntity):
     async def _control(self, value: int) -> None:
         """Control helper."""
         try:
-            await self.coordinator.async_control_streams(
-                {self.entity_description.stream_id: value}
-            )
+            await self.coordinator.async_control_streams({self._stream_id: value})
         except Exception as err:
             raise HomeAssistantError("Unable to control JD Smart") from err
+

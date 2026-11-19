@@ -1,7 +1,8 @@
 """Constants for the JD Smart integration."""
 
-import logging
+from collections.abc import Iterable, Mapping
 from datetime import timedelta
+import logging
 
 DOMAIN = "jd_smart"
 LOGGER = logging.getLogger(__package__)
@@ -22,6 +23,7 @@ CONF_CATEGORY_ID = "category_id"
 CONF_CATEGORY_NAME = "category_name"
 CONF_CHANNEL = "channel"
 CONF_COOKIE = "cookie"
+CONF_CURL = "curl"
 CONF_CONFIG_TYPE = "config_type"
 CONF_DEVICE_ID = "device_id"
 CONF_DEVICE_MODEL = "device_model"
@@ -57,10 +59,17 @@ ATTR_MANUFACTURER = "JD Smart"
 UPDATE_AUTH_FAILURE_THRESHOLD = 3
 
 DEVICE_TYPE_AIR_CONDITIONER = "air_conditioner"
+DEVICE_TYPE_SMART_PLUG = "smart_plug"
 DEVICE_TYPE_BY_CATEGORY = {
     "101001": DEVICE_TYPE_AIR_CONDITIONER,
+    "102010": DEVICE_TYPE_SMART_PLUG,
 }
 AIR_CONDITIONER_REQUIRED_STREAMS = frozenset({"power", "mode", "settemp"})
+SMART_PLUG_REQUIRED_STREAMS = frozenset({"Power"})
+REQUIRED_STREAMS_BY_DEVICE_TYPE = {
+    DEVICE_TYPE_AIR_CONDITIONER: AIR_CONDITIONER_REQUIRED_STREAMS,
+    DEVICE_TYPE_SMART_PLUG: SMART_PLUG_REQUIRED_STREAMS,
+}
 PULL_REQUEST_URL = "https://github.com/orangeboyChen/ha-jd-smart/pulls"
 
 
@@ -73,3 +82,26 @@ def auth_refresh_notification_ids(
         f"{DOMAIN}_token_refresh_failed",
         *(f"{DOMAIN}_{feed_id}_token_refresh_failed" for feed_id in feed_ids),
     )
+
+
+def resolve_stream_id(streams: Mapping[str, object], wanted: str) -> str | None:
+    """Return the actual stream id matching ``wanted``, ignoring case.
+
+    The cloud reports the same logical stream under different casings
+    (``power`` for air conditioners, ``Power`` for plugs), so entity code
+    must resolve the real key instead of assuming one spelling.
+    """
+    if wanted in streams:
+        return wanted
+    folded = wanted.casefold()
+    for stream_id in streams:
+        if str(stream_id).casefold() == folded:
+            return str(stream_id)
+    return None
+
+
+def has_required_streams(
+    streams: Mapping[str, object], required: Iterable[str]
+) -> bool:
+    """Return whether every required stream id is present, ignoring case."""
+    return all(resolve_stream_id(streams, name) is not None for name in required)

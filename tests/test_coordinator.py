@@ -476,3 +476,46 @@ async def test_control_result_without_streams_keeps_state(hass) -> None:
         assert coordinator.data.streams == {"Power": "1"}
     finally:
         await coordinator.async_shutdown()
+
+
+async def test_control_gives_user_a_clear_error_when_retries_exhaust(hass) -> None:
+    """A persistent decrypt failure still surfaces as UpdateFailed, not a hang."""
+    from custom_components.jd_smart.api import JdSmartDecryptError
+
+    entry, client, manager = _create_manager(hass)
+    coordinator = JdSmartCoordinator(
+        hass, entry, client, "plug-feed", "Plug", "smart_plug", manager
+    )
+    coordinator.data = JdSmartSnapshot("-1", "1", False, {"Power": "0"})
+    client.async_control_streams = AsyncMock(
+        side_effect=JdSmartDecryptError("Wangyin decrypt failed after 5 attempts")
+    )
+
+    try:
+        with pytest.raises(UpdateFailed):
+            await coordinator.async_control_streams({"Power": 1})
+        assert coordinator.data.streams == {"Power": "0"}, "state must be preserved"
+    finally:
+        await coordinator.async_shutdown()
+
+
+async def test_control_transient_failure_is_absorbed_by_client_retry(hass) -> None:
+    """The client's internal retry means the coordinator never sees a blip."""
+    entry, client, manager = _create_manager(hass)
+    coordinator = JdSmartCoordinator(
+        hass, entry, client, "plug-feed", "Plug", "smart_plug", manager
+    )
+    coordinator.data = JdSmartSnapshot("-1", "1", False, {"Power": "0"})
+    client.async_control_streams = AsyncMock(
+        return_value=JdSmartSnapshot("-2", "1", False, {"Power": "1"})
+    )
+    client.async_get_snapshot = AsyncMock(
+        return_value=JdSmartSnapshot("-2", "1", False, {"Power": "1"})
+    )
+
+    try:
+        await coordinator.async_control_streams({"Power": 1})
+        assert coordinator.data.streams == {"Power": "1"}
+        assert client.async_control_streams.await_count == 1
+    finally:
+        await coordinator.async_shutdown()

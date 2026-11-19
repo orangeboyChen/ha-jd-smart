@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+import json
 from typing import Any
 from unittest.mock import Mock
 
@@ -13,10 +14,13 @@ from multidict import CIMultiDict
 
 from custom_components.jd_smart.api import (
     REQUEST_TIMEOUT,
+    WANGYIN_MAX_ATTEMPTS,
     JdSmartCannotConnectError,
     JdSmartClient,
     JdSmartCredentials,
+    JdSmartDecryptError,
     JdSmartDeviceProfile,
+    JdSmartError,
     JdSmartTokenRefreshError,
 )
 
@@ -137,3 +141,108 @@ async def test_token_refresh_reports_failure_reason() -> None:
         await _client(session).async_refresh_token()
 
     assert session.calls[0]["timeout"] is REQUEST_TIMEOUT
+
+
+class _FlakySession:
+    """Fail the first ``failures`` posts with 604, then succeed."""
+
+    def __init__(self, failures: int) -> None:
+        """Configure how many leading posts fail."""
+        self.failures = failures
+        self.posts = 0
+
+    def post(self, _url: str, **_kwargs: Any) -> _RequestContext:
+        """Return a 604 body for the configured failures, else a success."""
+        self.posts += 1
+        if self.posts <= self.failures:
+            return _RequestContext(
+                _Response(HTTPStatus.OK, '{"code": 604, "msg": "decrypt failed"}')
+            )
+        return _RequestContext(
+            _Response(
+                HTTPStatus.OK,
+                json.dumps({"status": 0, "error": None, "result": "{}"}),
+            )
+        )
+
+
+async def test_wangyin_retries_through_transient_decrypt_failures() -> None:
+    """A rejected packet is retried with a fresh session and eventually succeeds."""
+    session = _FlakySession(failures=3)
+    client = JdSmartClient(
+        session,  # type: ignore[arg-type]
+        JdSmartCredentials(cookie="cookie", tgt="tgt"),
+        JdSmartDeviceProfile(device_id="device-id"),
+    )
+
+    # Stub the handshake so no network is touched; every retry rotates it.
+    handshakes = 0
+
+    async def fake_handshake():
+        nonlocal handshakes
+        handshakes += 1
+        from custom_components.jd_smart.api import _WangyinSession
+
+        return _WangyinSession(bytes(0x50), bytes(32))
+
+    client._async_start_wangyin_handshake = fake_handshake  # type: ignore[method-assign]
+
+    payload = await client._request_wangyin_json("/c/service/x", '{"json":{}}')
+
+    assert payload["status"] == 0
+    assert session.posts == 4, "expected 3 failures then one success"
+    assert handshakes == 4, "each attempt must handshake afresh"
+
+
+async def test_wangyin_gives_up_after_max_attempts() -> None:
+    """A permanently failing gateway raises instead of retrying forever."""
+    session = _FlakySession(failures=99)
+    client = JdSmartClient(
+        session,  # type: ignore[arg-type]
+        JdSmartCredentials(cookie="cookie", tgt="tgt"),
+        JdSmartDeviceProfile(device_id="device-id"),
+    )
+
+    async def fake_handshake():
+        from custom_components.jd_smart.api import _WangyinSession
+
+        return _WangyinSession(bytes(0x50), bytes(32))
+
+    client._async_start_wangyin_handshake = fake_handshake  # type: ignore[method-assign]
+
+    with pytest.raises(JdSmartDecryptError, match=f"{WANGYIN_MAX_ATTEMPTS} attempts"):
+        await client._request_wangyin_json("/c/service/x", '{"json":{}}')
+
+    assert session.posts == WANGYIN_MAX_ATTEMPTS
+
+
+async def test_wangyin_does_not_retry_non_decrypt_errors() -> None:
+    """Real API errors fail immediately rather than burning retries."""
+    class _Failing(_FlakySession):
+        def post(self, _url: str, **_kwargs: Any) -> _RequestContext:
+            self.posts += 1
+            return _RequestContext(
+                _Response(
+                    HTTPStatus.OK,
+                    '{"status": -3, "error": {"errorCode": "-3", "errorInfo": "busy"}}',
+                )
+            )
+
+    session = _Failing(failures=0)
+    client = JdSmartClient(
+        session,  # type: ignore[arg-type]
+        JdSmartCredentials(cookie="cookie", tgt="tgt"),
+        JdSmartDeviceProfile(device_id="device-id"),
+    )
+
+    async def fake_handshake():
+        from custom_components.jd_smart.api import _WangyinSession
+
+        return _WangyinSession(bytes(0x50), bytes(32))
+
+    client._async_start_wangyin_handshake = fake_handshake  # type: ignore[method-assign]
+
+    with pytest.raises(JdSmartError, match="busy"):
+        await client._request_wangyin_json("/c/service/x", '{"json":{}}')
+
+    assert session.posts == 1, "non-decrypt errors must not be retried"

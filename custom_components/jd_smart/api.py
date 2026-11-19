@@ -164,8 +164,12 @@ _CURL_HEADER_PATTERN = re.compile(
     r"""-H\s+(?P<quote>['"])(?P<header>.*?)(?P=quote)""",
     re.DOTALL,
 )
+# Exporting a request from some tools (browsers, IDE consoles, shell history
+# viewers) escapes the URL as ``https\://`` or ``https:\/\/``. The separators
+# must be tolerated, otherwise the query string is never parsed and the
+# platform/device_id/channel silently fall back to defaults.
 _CURL_URL_PATTERN = re.compile(
-    r"""(?P<quote>['"])(?P<url>https?://[^'"\s]+)(?P=quote)""",
+    r"""(?P<quote>['"])(?P<url>https?\\?:[\\/]+[^'"\s]+)(?P=quote)""",
 )
 _HEADER_NAME_MAP = {
     "tgt": "tgt",
@@ -212,13 +216,19 @@ def parse_curl_command(text: str) -> dict[str, str]:
         name, separator, value = header.partition(":")
         if not separator:
             continue
+        # Pasted commands often escape underscores (``\_\_jdu``) because the
+        # text went through a shell-quoting layer. Drop those backslashes for
+        # the header values we keep; they are never meaningful in a cookie.
+        value = value.strip().replace("\\", "")
         key = _HEADER_NAME_MAP.get(name.strip().lower())
-        if key is not None and value.strip():
-            found[key] = value.strip()
+        if key is not None and value:
+            found[key] = value
 
     url_match = _CURL_URL_PATTERN.search(text)
     if url_match:
-        query = parse_qs(urlparse(url_match.group("url")).query)
+        # Unescape the separators before handing the URL to urlparse.
+        raw_url = url_match.group("url").replace("\\", "")
+        query = parse_qs(urlparse(raw_url).query)
         for query_name, key in _QUERY_NAME_MAP.items():
             values = query.get(query_name)
             if values and values[0].strip():

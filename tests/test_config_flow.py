@@ -15,6 +15,7 @@ from custom_components.jd_smart.config_flow import (
 )
 from custom_components.jd_smart.const import (
     CONF_APP_VERSION,
+    CONF_CHANNEL,
     CONF_COOKIE,
     CONF_CURL,
     CONF_DEVICE_ID,
@@ -259,3 +260,79 @@ def test_form_pin_wins_over_derived_pin() -> None:
         }
     )
     assert merged[CONF_PIN] == "typed"
+
+
+def test_parse_curl_handles_escaped_url_separators() -> None:
+    r"""Exported requests escape the URL as https\:// or https:\/\/."""
+    for url in (
+        "https://api.smart.jd.com/x?plat=iPhone",
+        "https\\://api.smart.jd.com/x?plat=iPhone",
+        "https:\\/\\/api.smart.jd.com/x?plat=iPhone",
+    ):
+        parsed = parse_curl_command(
+            f'curl -H "tgt: T" -H "Cookie: pt_pin=u" "{url}"'
+        )
+        assert parsed[CONF_PLATFORM] == "iPhone", url
+        assert parsed[CONF_TGT] == "T"
+
+
+def test_parse_curl_reads_query_from_escaped_url() -> None:
+    """device_id/channel must not silently fall back to defaults."""
+    parsed = parse_curl_command(
+        'curl -H "appplatform: iPhone14,3" -H "tgt: T" -H "Cookie: pt_pin=u" '
+        '"https\\://api.smart.jd.com/c/x?plat=iPhone&hard_platform=iPhone14,3'
+        '&app_version=2.5.0&plat_version=27.2'
+        '&device_id=0123456789abcdef0123456789abcdef01234567&channel=AppStore"'
+    )
+    assert parsed[CONF_PLATFORM] == "iPhone"
+    assert parsed[CONF_DEVICE_MODEL] == "iPhone14,3"
+    assert parsed[CONF_DEVICE_ID] == "0123456789abcdef0123456789abcdef01234567"
+    assert parsed[CONF_CHANNEL] == "AppStore"
+
+
+def test_parse_curl_strips_escaped_underscores_in_cookie() -> None:
+    """Shell-quoting leaves \\_\\_jdu in the pasted cookie; drop the slashes."""
+    parsed = parse_curl_command(
+        'curl -H "tgt: T" '
+        '-H "Cookie: \\_\\_jdu=123; pt_key=k; pt_pin=alice" '
+        '"https://api.smart.jd.com/x"'
+    )
+    assert "\\" not in parsed[CONF_COOKIE]
+    assert "__jdu=123" in parsed[CONF_COOKIE]
+    assert parsed[CONF_PIN] == "alice"
+
+
+def test_parse_curl_accepts_full_escaped_snapshot_capture() -> None:
+    """A real-world export from the app must parse completely."""
+    capture = (
+        'curl -k -X POST -H "Content-Length: 82" '
+        '-H "appplatformversion: 27.2" '
+        '-H "Sgm-Context: 111111111111111111;111111111111111111;false;'
+        'TESTFAKEKEY@0fakeFakeFakeFake0" '
+        '-H "Host: api.smart.jd.com" '
+        '-H "appplatform: iPhone14,3" '
+        '-H "User-Agent: ios" '
+        '-H "appversion: 2.5.0" '
+        '-H "Content-Type: application/json" '
+        '-H "Cookie: sdtoken=SD; shshshfpb=BX; \\_\\_jdu=179; '
+        'pt_key=app_openKEY; pt_pin=alice; pwdt_id=alice; sid=4e8" '
+        '-H "tgt: TGT-VALUE" '
+        '-d "{\\"json\\":{\\"feed_id\\":\\"1\\",\\"version\\":\\"2.0\\"}}" '
+        '"https\\://api.smart.jd.com/c/service/integration/v1/'
+        'getDeviceSnapshot_v1?plat=iPhone&hard_platform=iPhone14,3'
+        '&app_version=2.5.0&plat_version=27.2&device_id=DEVICE-ID-1'
+        '&channel=AppStore" --compressed'
+    )
+    parsed = parse_curl_command(capture)
+
+    assert parsed[CONF_TGT] == "TGT-VALUE"
+    assert parsed[CONF_PLATFORM] == "iPhone"
+    assert parsed[CONF_DEVICE_MODEL] == "iPhone14,3"
+    assert parsed[CONF_DEVICE_ID] == "DEVICE-ID-1"
+    assert parsed[CONF_CHANNEL] == "AppStore"
+    assert parsed[CONF_PLATFORM_VERSION] == "27.2"
+    assert parsed[CONF_APP_VERSION] == "2.5.0"
+    assert parsed[CONF_USER_AGENT] == "ios"
+    assert parsed[CONF_PIN] == "alice"
+    assert "\\" not in parsed[CONF_COOKIE]
+    assert "sdtoken=SD" in parsed[CONF_COOKIE]
